@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AvisAI · recebedor (plano B)</title>
+<script src="https://cdn.jsdelivr.net/npm/agora-rtc-sdk-ng@4.23.4/AgoraRTC_N-production.js"></script>
+<script src="/static/agora-cliente.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; background: #fdf7ee; color: #1b1b1b; }
+  .tel { background: #fff; border: 1px solid #e3d3b8; border-radius: 16px; padding: 24px; text-align: center; }
+  #status { font-size: 20px; margin: 12px 0; }
+  button { font-size: 18px; padding: 14px 24px; border-radius: 40px; border: 0; margin: 6px; cursor: pointer; }
+  .atender { background: #16a34a; color: #fff; }
+  .desligar { background: #dc2626; color: #fff; }
+  pre { background: #111; color: #ddd; padding: 12px; border-radius: 8px; height: 200px; overflow: auto; font-size: 13px; white-space: pre-wrap; text-align: left; }
+</style>
+</head>
+<body>
+<div class="tel">
+  <h2>Recebimento · Mercadão Campinas</h2>
+  <p><small>Simulação declarada (plano B): o recebedor atende a ligação do agente por um canal Agora RTC no navegador, em vez de um telefone.</small></p>
+  <div id="status">Aguardando ligação…</div>
+  <button class="atender" id="btnAtender" onclick="atender()" disabled>Atender</button>
+  <button class="desligar" onclick="desligar()">Desligar</button>
+</div>
+<pre id="log"></pre>
+<script>
+const el = document.getElementById("log");
+const log = (m) => { el.textContent += `[${new Date().toLocaleTimeString()}] ${m}\n`; el.scrollTop = el.scrollHeight; };
+const params = new URLSearchParams(location.search);
+let lig = null;
+async function buscar() {
+  const id = params.get("ligacao");
+  const r = await fetch(id ? `/ligacoes/${id}` : "/ligacoes/atual/recebedor");
+  const j = await r.json();
+  const l = id ? j : (j.ligacao === null ? null : j);
+  if (l && l.token && l.status === "em_andamento") {
+    if (!lig || lig.id !== l.id) log(`ligação ${l.id} de ${l.numero}`);
+    lig = l;
+    document.getElementById("status").textContent = "📞 Ligação da Transportadora Rota Sul";
+    document.getElementById("btnAtender").disabled = false;
+  } else if (l && lig && l.status !== "em_andamento") {
+    document.getElementById("status").textContent = `Ligação ${l.status}`;
+  }
+}
+setInterval(buscar, 2000); buscar();
+async function atender() {
+  document.getElementById("btnAtender").disabled = true;
+  document.getElementById("status").textContent = "Em ligação";
+  await AvisaiRTC.entrar({ app_id: lig.app_id, channel: lig.canal, uid: lig.uid, token: lig.token }, log);
+}
+async function desligar() { await AvisaiRTC.sair(log); document.getElementById("status").textContent = "Desligado"; }
+</script>
+</body>
+</html>

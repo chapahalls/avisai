@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AvisAI · teste do motorista</title>
+<script src="https://cdn.jsdelivr.net/npm/agora-rtc-sdk-ng@4.23.4/AgoraRTC_N-production.js"></script>
+<script src="/static/agora-cliente.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; background: #f6f6f4; color: #1b1b1b; }
+  button { font-size: 16px; padding: 10px 16px; margin: 4px 4px 4px 0; border-radius: 8px; border: 1px solid #999; background: #fff; cursor: pointer; }
+  button.prim { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+  pre { background: #111; color: #d7ffd7; padding: 12px; border-radius: 8px; height: 320px; overflow: auto; font-size: 13px; white-space: pre-wrap; }
+  .caixa { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 12px 16px; margin: 12px 0; }
+  #contador { font-size: 22px; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>AvisAI · motorista (página de teste do backend)</h1>
+<p>Abre a sessão do agente no canal da rota, entra com o microfone e mostra o stream do CCO. O app real do motorista é do front.</p>
+<div class="caixa">
+  Rota <input id="rota" value="1" size="3">
+  <button class="prim" onclick="iniciar()">Iniciar conversa</button>
+  <button onclick="encerrar()">Encerrar</button>
+  <button onclick="api('POST', `/rotas/${rota()}/reset`)">Reset da demo</button>
+</div>
+<div class="caixa">
+  <div id="contador">Estadia: —</div>
+  <div id="task">Task: —</div>
+</div>
+<pre id="log"></pre>
+<script>
+const rota = () => document.getElementById("rota").value;
+const el = document.getElementById("log");
+const log = (m) => { el.textContent += `[${new Date().toLocaleTimeString()}] ${m}\n`; el.scrollTop = el.scrollHeight; };
+let sessaoId = null;
+async function api(m, url, body) {
+  const r = await fetch(url, { method: m, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { log(`ERRO ${r.status} ${url}: ${JSON.stringify(j)}`); throw new Error(r.status); }
+  return j;
+}
+async function iniciar() {
+  const s = await api("POST", "/sessions", { rota_id: Number(rota()) });
+  sessaoId = s.id;
+  log(`sessão ${s.id} ativa, agent_id ${s.agent_id}`);
+  await AvisaiRTC.entrar({ app_id: s.app_id, channel: s.canal, uid: s.user_uid, token: s.token }, log);
+}
+async function encerrar() {
+  await AvisaiRTC.sair(log);
+  if (sessaoId) await api("DELETE", `/sessions/${sessaoId}`);
+}
+const es = new EventSource("/cco/stream");
+es.addEventListener("evento", (e) => { const d = JSON.parse(e.data).evento; log(`${d.tipo}: ${d.mensagem}`); });
+es.addEventListener("task", (e) => { const t = JSON.parse(e.data).task; document.getElementById("task").textContent = `Task ${t.id}: ${t.status} · tentativas ${t.tentativas} · canal ${t.canal_atual || "-"} · prioridade ${t.prioridade}`; });
+es.addEventListener("contador", (e) => {
+  const x = JSON.parse(e.data).estadias.find((y) => String(y.rota_id) === rota());
+  document.getElementById("contador").textContent = x ? `Parado ${x.tempo_parado} · franquia restante ${x.franquia_restante} · estadia ${x.valor_acumulado_fmt}` : "Estadia: —";
+});
+es.addEventListener("posicao", (e) => { const p = JSON.parse(e.data); log(`GPS: ${(p.distancia_m/1000).toFixed(1)} km, ETA ${Math.round(p.eta_min)} min, ${p.status}`); });
+</script>
+</body>
+</html>
