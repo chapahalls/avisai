@@ -51,12 +51,13 @@ async function encerrar() {
   if (sessaoId) await api("DELETE", `/sessions/${sessaoId}`);
 }
 const es = new EventSource("/cco/stream");
-es.addEventListener("evento", (e) => { const d = JSON.parse(e.data).evento; log(`${d.tipo}: ${d.mensagem}`); });
+es.addEventListener("evento", (e) => { const d = JSON.parse(e.data); log(`${d.tipo}: ${d.mensagem}`); });
 es.addEventListener("task", (e) => { const t = JSON.parse(e.data).task; document.getElementById("task").textContent = `Task ${t.id}: ${t.status} · tentativas ${t.tentativas} · canal ${t.canal_atual || "-"} · prioridade ${t.prioridade}`; });
 es.addEventListener("contador", (e) => {
   const x = JSON.parse(e.data).estadias.find((y) => String(y.rota_id) === rota());
-  document.getElementById("contador").textContent = x ? `Parado ${x.tempo_parado} · franquia restante ${x.franquia_restante} · estadia ${x.valor_acumulado_fmt}` : "Estadia: —";
+  document.getElementById("contador").textContent = x ? `Parado ${x.tempo_parado} · franquia restante ${x.franquia_restante} · estadia ${x.valor_fmt}` : "Estadia: —";
 });
+es.addEventListener("fala", (e) => { const f = JSON.parse(e.data); log(`🗣 agente (${f.papel}): ${f.texto}`); });
 es.addEventListener("posicao", (e) => { const p = JSON.parse(e.data); log(`GPS: ${(p.distancia_m/1000).toFixed(1)} km, ETA ${Math.round(p.eta_min)} min, ${p.status}`); });
 </script>
 </body>

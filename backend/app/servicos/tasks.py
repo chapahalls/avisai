@@ -1,0 +1,180 @@
+"""Peça 6: chegada → Task do CCO + estadia; escalonamento; confirmação; descarga; ocorrências."""
+import asyncio
+import logging
+from typing import Optional
+
+from sqlmodel import select
+
+from ..dominio import escalonamento
+from ..dominio.enums import StatusRota, StatusTask, TipoEvento, TipoGeo
+from ..infra.db import sessao
+from ..infra.models import Estadia, EventoGeo, Ocorrencia, RegraEscalonamento, Rota, TaskCCO
+from . import consultas, ligacoes
+from .sessoes import VozAgora
+
+log = logging.getLogger("avisai.tasks")
+
+
+def _publicar_task(c, t: TaskCCO) -> None:
+    c.eventos.publicar("task", {"task": t.model_dump()}, t.rota_id)
+
+
+async def on_chegada(c, rota_id: int, origem: str = "gps", transcricao: Optional[str] = None) -> TaskCCO:
+    """Cria a Task e inicia a estadia (idempotente). Por voz, valida a chegada do GPS (dupla prova)."""
+    agora = c.relogio.agora()
+    with sessao() as s:
+        r = s.get(Rota, rota_id)
+        if not r:
+            raise consultas.NaoEncontrado(f"rota {rota_id} não existe")
+        t = s.exec(select(TaskCCO).where(TaskCCO.rota_id == rota_id, TaskCCO.tipo == "chegada")).first()
+        geo = s.exec(select(EventoGeo).where(EventoGeo.rota_id == rota_id, EventoGeo.tipo == TipoGeo.CHEGADA)).first()
+        if origem == "voz":
+            if geo:
+                geo.confirmacao_voz_transcricao, geo.confirmacao_voz_em, geo.status = transcricao, agora, "validado"
+                s.add(geo)
+            else:
+                s.add(EventoGeo(rota_id=rota_id, tipo=TipoGeo.CHEGADA, lat=r.ultima_lat, lng=r.ultima_lng,
+                                distancia_m=r.distancia_m, confirmacao_voz_transcricao=transcricao,
+                                confirmacao_voz_em=agora, timestamp=agora))
+        if r.status != StatusRota.DESCARREGADA:
+            r.status = StatusRota.NO_DESTINO
+            s.add(r)
+        if t:
+            s.commit()
+            if origem == "voz":
+                c.eventos.registrar(TipoEvento.CHEGADA_CONFIRMADA_VOZ, "Motorista confirmou a chegada por voz", rota_id,
+                                    transcricao=transcricao)
+            return t
+        t = TaskCCO(rota_id=rota_id, tipo="chegada", status=StatusTask.PENDENTE, criada_em=agora)
+        e = Estadia(rota_id=rota_id, inicio=agora, capacidade_t=r.carga_t,
+                    franquia_h=c.settings.estadia_franquia_h, valor_t_h=c.settings.estadia_valor_t_h)
+        s.add(t)
+        s.add(e)
+        s.commit()
+        s.refresh(t)
+        s.refresh(e)
+    c.eventos.registrar(
+        TipoEvento.CHEGADA,
+        f"Carga da rota {rota_id} ({r.placa}) chegou em {r.destino_nome}. Task criada para o CCO; estadia contando.",
+        rota_id, task_id=t.id, estadia_id=e.id, origem=origem,
+    )
+    _publicar_task(c, t)
+    await VozAgora(c).falar_motorista(
+        rota_id, "Chegada registrada. Avisei o CCO e o contador de estadia começou: são cinco horas de franquia. "
+                 "Se tiver fila ou problema na doca, me fala.")
+    c.em_segundo_plano(f"escalonamento-{t.id}", loop_escalonamento(c, t.id))
+    return t
+
+
+def _regra(c, rota_id: int) -> tuple[int, float, list]:
+    with sessao() as s:
+        r = s.get(Rota, rota_id)
+        regra = s.exec(select(RegraEscalonamento).where(RegraEscalonamento.empresa_id == r.empresa_id)).first()
+    if regra:
+        return regra.max_tentativas, c.settings.cco_intervalo_s, list(regra.niveis)
+    return c.settings.cco_max_tentativas, c.settings.cco_intervalo_s, ["push", "painel", "ligacao"]
+
+
+async def loop_escalonamento(c, task_id: int) -> None:
+    with sessao() as s:
+        rota_id = s.get(TaskCCO, task_id).rota_id
+    max_t, intervalo, niveis = _regra(c, rota_id)
+    for n in range(1, max_t + 1):
+        canal, prioridade = escalonamento.nivel(n, niveis)
+        with sessao() as s:
+            t = s.get(TaskCCO, task_id)
+            if t.status != StatusTask.PENDENTE:
+                return
+            t.tentativas, t.canal_atual, t.prioridade, t.ultima_notificacao = n, canal, prioridade, c.relogio.agora()
+            s.add(t)
+            s.commit()
+            s.refresh(t)
+        e = consultas.estadia_aberta(rota_id)
+        x = consultas.resumo_estadia_dict(c, e) if e else {}
+        c.eventos.registrar(
+            TipoEvento.NOTIFICACAO_CCO,
+            f"Tentativa {n}/{max_t} ({canal}): caminhão parado há {x.get('tempo_parado', '-')}, "
+            f"franquia restante {x.get('franquia_restante', '-')}, estadia {x.get('valor_fmt', '-')}.",
+            rota_id, task_id=task_id, tentativa=n, canal=canal, prioridade=prioridade, estadia=x,
+        )
+        _publicar_task(c, t)
+        await asyncio.sleep(intervalo)
+    with sessao() as s:
+        t = s.get(TaskCCO, task_id)
+        if t.status != StatusTask.PENDENTE:
+            return
+        t.status, t.prioridade = StatusTask.ESCALADA_RECEBEDOR, "critica"
+        s.add(t)
+        s.commit()
+        s.refresh(t)
+    c.eventos.registrar(TipoEvento.ESCALADA_RECEBEDOR,
+                        f"CCO não respondeu em {max_t} tentativas. Agente vai ligar para o recebimento.", rota_id, task_id=task_id)
+    _publicar_task(c, t)
+    await VozAgora(c).falar_motorista(rota_id, f"O CCO não respondeu em {max_t} tentativas. Tô ligando pro recebimento agora.")
+    try:
+        await ligacoes.ligar(c, rota_id, motivo="cco_sem_resposta", task_id=task_id)
+    except Exception as e:  # noqa: BLE001  (já registrado como ligacao_falhou)
+        log.error("ligação ao recebedor falhou: %s", e)
+
+
+async def confirmar(c, task_id: int, por: str = "CCO") -> TaskCCO:
+    with sessao() as s:
+        t = s.get(TaskCCO, task_id)
+        if not t:
+            raise consultas.NaoEncontrado("task não existe")
+        if t.status in (StatusTask.PENDENTE, StatusTask.ESCALADA_RECEBEDOR):
+            t.status, t.confirmado_em, t.confirmado_por = StatusTask.CONFIRMADA, c.relogio.agora(), por
+            s.add(t)
+            s.commit()
+            s.refresh(t)
+    c.eventos.registrar(TipoEvento.TASK_CONFIRMADA, f"{por} assumiu a Task da rota {t.rota_id}.", t.rota_id, task_id=task_id)
+    _publicar_task(c, t)
+    await VozAgora(c).falar_motorista(t.rota_id, "O CCO assumiu o seu caso e vai tratar com o recebedor.")
+    return t
+
+
+async def confirmar_descarga(c, rota_id: int, por: str = "motorista", transcricao: Optional[str] = None) -> dict:
+    agora = c.relogio.agora()
+    with sessao() as s:
+        r = s.get(Rota, rota_id)
+        if not r:
+            raise consultas.NaoEncontrado(f"rota {rota_id} não existe")
+        e = s.exec(select(Estadia).where(Estadia.rota_id == rota_id, Estadia.fim == None)).first()  # noqa: E711
+        t = s.exec(select(TaskCCO).where(TaskCCO.rota_id == rota_id).order_by(TaskCCO.id.desc())).first()
+        if e:
+            e.fim = agora
+            s.add(e)
+        if t and t.status != StatusTask.CONCLUIDA:
+            t.status, t.concluida_em = StatusTask.CONCLUIDA, agora
+            s.add(t)
+        r.status = StatusRota.DESCARREGADA
+        s.add(r)
+        s.add(EventoGeo(rota_id=rota_id, tipo=TipoGeo.DESCARGA, lat=r.ultima_lat, lng=r.ultima_lng, timestamp=agora,
+                        confirmacao_voz_transcricao=transcricao, confirmacao_voz_em=agora if transcricao else None,
+                        status="validado" if transcricao else "nao_validado"))
+        s.commit()
+        if e:
+            s.refresh(e)
+        if t:
+            s.refresh(t)
+    x = consultas.resumo_estadia_dict(c, e) if e else {}
+    c.eventos.registrar(
+        TipoEvento.DESCARGA,
+        f"Descarga confirmada por {por}. Tempo parado {x.get('tempo_parado', '-')}, estadia {x.get('valor_fmt', '-')}.",
+        rota_id, estadia=x, task_id=t.id if t else None,
+    )
+    if t:
+        _publicar_task(c, t)
+    return x
+
+
+def registrar_ocorrencia(c, rota_id: int, tipo: str, descricao: str, transcricao: Optional[str] = None) -> Ocorrencia:
+    with sessao() as s:
+        r = s.get(Rota, rota_id)
+        o = Ocorrencia(rota_id=rota_id, tipo=tipo, descricao=descricao, lat=r.ultima_lat, lng=r.ultima_lng,
+                       transcricao=transcricao, timestamp=c.relogio.agora())
+        s.add(o)
+        s.commit()
+        s.refresh(o)
+    c.eventos.registrar(TipoEvento.OCORRENCIA, f"Ocorrência ({tipo}): {descricao}", rota_id, ocorrencia_id=o.id, tipo_ocorrencia=tipo)
+    return o

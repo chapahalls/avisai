@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .api import agentes, ligacoes
+from .api import agentes, cco, ligacoes, llm, rotas
 from .infra import container as ct
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -28,6 +28,9 @@ app = FastAPI(title="AvisAI API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.include_router(agentes.router)
 app.include_router(ligacoes.router)
+app.include_router(rotas.router)
+app.include_router(llm.router)
+app.include_router(cco.router)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
