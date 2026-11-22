@@ -81,6 +81,11 @@ scripts/simular_rota.py   GPS simulado
 | Recebedor, plano B | Web SDK (página `/recebedor` do backend) | `GET /ligacoes/atual/recebedor` |
 | Recebedor, plano A | nenhum, é um telefone de verdade | — |
 
+**Clientes prontos para copiar** (em `clients/`, com tipos checados por `tsc --strict` contra `react-native-agora` 4.6.4):
+- `clients/tipos.ts`: o contrato em TypeScript (Sessao, TaskCCO, Estadia, Ligacao, EventoStream e as mensagens do stream).
+- `clients/react-native/useAvisaiVoz.ts`: hook do app do motorista. Expõe `iniciar()`, `encerrar()`, `alternarMudo()`, `enviarPosicao()` e o estado vivo (`status`, `estadia`, `task`, `ligacao`, `falas`, `eventos`). Dentro dele já estão o `POST /sessions`, o join com `AUDIO_SCENARIO_AI_CLIENT`, os parâmetros de áudio da Agora (reaplicados quando o áudio troca de saída), o viva-voz, a renovação do token, o `DELETE` e o `/ws` com reconexão.
+- `clients/web/avisaiStream.ts`: cliente SSE tipado, sem framework, com reconexão e as ações REST do CCO. `clients/web/useAvisaiCCO.ts` é um hook React por cima dele.
+
 O front **nunca** chama a REST da Agora: App Certificate e Customer Secret ficam só aqui. O front recebe tokens de 24 h e renova por `GET /token`.
 
 ### App do motorista (React Native)
