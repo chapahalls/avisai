@@ -6,7 +6,7 @@ from typing import AsyncIterator, Optional
 
 from sqlmodel import select
 
-from ..dominio import prompts
+from ..dominio import contingencia, prompts
 from ..dominio.enums import Papel, TipoEvento
 from ..infra.db import sessao
 from ..infra.models import Evento, LigacaoRecebedor, SessaoAgente
@@ -60,20 +60,31 @@ def _transcrever(sa: SessaoAgente, quem: str, texto: str) -> None:
         s.commit()
 
 
-def heuristica(sa: SessaoAgente, fala: str) -> tuple[Optional[str], dict, str]:
-    """Plano de contingência sem LLM: regras por palavra-chave para a demo não travar."""
-    f = fala.lower()
-    if sa.papel == Papel.RECEBEDOR:
-        if any(p in f for p in ("doca", "minuto", "hora", "não recebe", "nao recebe", "amanhã")):
-            return "registrar_resposta_recebedor", {"resumo": fala}, "Anotado. Vou passar para o motorista. Obrigada!"
-        return None, {}, "Qual a previsão de descarga e a doca, por favor?"
-    if any(p in f for p in ("descarreg", "terminei", "liberaram")):
-        return "confirmar_descarga", {}, "Fechado, descarga registrada e estadia encerrada."
-    if any(p in f for p in ("cheguei", "portaria", "no pátio")):
-        return "confirmar_chegada", {}, "Chegada registrada. O contador de estadia já tá rodando."
-    if any(p in f for p in ("fila", "doca", "problema")):
-        return "registrar_ocorrencia", {"tipo": "fila" if "fila" in f else "outro", "descricao": fala}, "Registrei a ocorrência, o CCO vai ver."
-    return None, {}, "Entendi. Tô de olho na entrega, qualquer coisa me chama."
+def estado_contingencia(c, sa: SessaoAgente) -> contingencia.Estado:
+    from ..dominio.estadia import falar_horas
+
+    r, nome, _ = consultas.contexto_rota(sa.rota_id)
+    e = consultas.ultima_estadia(sa.rota_id)
+    x = consultas.resumo_estadia(c, e) if e else None
+    t = consultas.ultima_task(sa.rota_id)
+    lig = consultas.ultima_ligacao(sa.rota_id)
+    respondida = lig if lig and lig.status == "respondida" else None
+    return contingencia.Estado(
+        nome=nome.split()[0], destino=r.destino_nome, status_rota=r.status,
+        tempo_parado=falar_horas(x.horas_paradas) if x else None,
+        franquia_restante=falar_horas(x.franquia_restante_h) if x else None,
+        valor=x.valor_fmt if x else None,
+        task_status=t.status if t else None, tentativas_cco=t.tentativas if t else 0,
+        doca=respondida.doca if respondida else None, previsao=respondida.previsao if respondida else None,
+        resumo_recebedor=respondida.resposta_resumo if respondida else None,
+        ligacao_status=lig.status if lig else None,
+    )
+
+
+def heuristica(c, sa: SessaoAgente, fala: str) -> tuple[Optional[str], dict, str]:
+    """Contingência sem LLM: diálogo por intenção com o estado da rota (dominio/contingencia.py)."""
+    d = contingencia.decidir(sa.papel, fala, estado_contingencia(c, sa))
+    return d.ferramenta, d.args, d.texto
 
 
 async def _executar(c, sa: SessaoAgente, nome: str, args: dict, fala: str) -> dict:
@@ -99,7 +110,7 @@ async def responder(c, sa: SessaoAgente, msgs_in: list[dict]) -> AsyncIterator[s
     dito: list[str] = []
 
     async def contingencia():
-        nome, args, texto = heuristica(sa, fala)
+        nome, args, texto = heuristica(c, sa, fala)
         if nome:
             await _executar(c, sa, nome, args, fala)
         dito.append(texto)

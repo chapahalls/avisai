@@ -102,3 +102,11 @@ async def test_nova_sessao_tira_o_agente_antigo_do_canal(client, fake_agora):
     assert fake_agora.leaves == [a["agent_id"]]
     sessoes = {s["id"]: s for s in (await client.get("/sessions")).json()}
     assert sessoes[a["id"]]["status"] == "encerrada" and sessoes[b["id"]]["status"] == "ativa"
+
+
+async def test_clique_duplo_deixa_uma_sessao_ativa(client, fake_agora):
+    import asyncio
+
+    await asyncio.gather(client.post("/sessions", json={"rota_id": 1}), client.post("/sessions", json={"rota_id": 1}))
+    ativas = [s for s in (await client.get("/sessions")).json() if s["status"] == "ativa"]
+    assert len(ativas) == 1 and len(fake_agora.leaves) == 1

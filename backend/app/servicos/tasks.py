@@ -59,9 +59,10 @@ async def on_chegada(c, rota_id: int, origem: str = "gps", transcricao: Optional
         rota_id, task_id=t.id, estadia_id=e.id, origem=origem,
     )
     _publicar_task(c, t)
-    await VozAgora(c).falar_motorista(
-        rota_id, "Chegada registrada. Avisei o CCO e o contador de estadia começou: são cinco horas de franquia. "
-                 "Se tiver fila ou problema na doca, me fala.")
+    if origem != "voz":  # por voz, o próprio agente já responde ao motorista
+        await VozAgora(c).falar_motorista(
+            rota_id, "Chegada registrada. Avisei o CCO e o contador de estadia começou: são cinco horas de franquia. "
+                     "Se tiver fila ou problema na doca, me fala.")
     c.em_segundo_plano(f"escalonamento-{t.id}", loop_escalonamento(c, t.id))
     return t
 

@@ -1,4 +1,5 @@
 """Sessões de agente (motorista) e fala proativa (porta Voz)."""
+import asyncio
 import logging
 from typing import Optional
 
@@ -50,7 +51,17 @@ def _atualizar(sessao_id: int, **campos) -> SessaoAgente:
         return sa
 
 
+_travas: dict[int, asyncio.Lock] = {}
+
+
 async def iniciar_motorista(c, rota_id: int) -> SessaoAgente:
+    """Um início por vez por rota (clique duplo não cria dois agentes com o mesmo uid)."""
+    trava = _travas.setdefault(rota_id, asyncio.Lock())
+    async with trava:
+        return await _iniciar_motorista(c, rota_id)
+
+
+async def _iniciar_motorista(c, rota_id: int) -> SessaoAgente:
     r, nome_mot, empresa = consultas.contexto_rota(rota_id)
     # Um agente por canal: dois com o uid 9001 se derrubam. Tira os antigos antes do /join novo.
     with sessao() as s:

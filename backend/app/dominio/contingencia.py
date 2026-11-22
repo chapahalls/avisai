@@ -1,0 +1,144 @@
+"""Diálogo de contingência (sem LLM): intenção por palavras-chave + resposta com o estado da rota.
+
+Usado quando não há LLM_API_KEY ou o upstream cai. Cobre os fluxos da demo: chegada, ocorrências,
+descarga, perguntas de tempo parado/estadia/doca/CCO e a resposta do recebedor na ligação.
+"""
+import re
+import unicodedata
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass(frozen=True)
+class Estado:
+    nome: str
+    destino: str
+    status_rota: str
+    tempo_parado: Optional[str] = None  # falado: "1 hora e 20 minutos"
+    franquia_restante: Optional[str] = None
+    valor: Optional[str] = None  # "R$ 70,00"
+    task_status: Optional[str] = None
+    tentativas_cco: int = 0
+    doca: Optional[str] = None
+    previsao: Optional[str] = None
+    resumo_recebedor: Optional[str] = None
+    ligacao_status: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class Decisao:
+    texto: str
+    ferramenta: Optional[str] = None
+    args: dict = field(default_factory=dict)
+
+
+def normalizar(t: str) -> str:
+    """minúsculas e sem acento, preservando o comprimento (para recortar o texto original)."""
+    t = unicodedata.normalize("NFC", t)
+    return "".join(unicodedata.normalize("NFD", ch)[0] for ch in t).lower()
+
+
+def _tem(t: str, *padroes: str) -> bool:
+    return any(re.search(p, t) for p in padroes)
+
+
+PERGUNTA = (r"\?", r"\bquanto", r"\bqual\b", r"\bquando\b", r"\bcade\b", r"\balguma noticia", r"\brespondeu",
+            r"\bprevisao\b", r"\bja deu\b", r"\bcomo (ta|esta)\b")
+
+OCORRENCIAS = [  # (tipo, padrões, rótulo falado) — a ordem importa
+    ("recusa", (r"recus", r"nao vao receber", r"devolv", r"devoluc"), "recusa da carga"),
+    ("doca_ocupada", (r"doca\w* (ta |esta )?(ocupad|chei|lotad)", r"(ocupad|lotad)\w* a doca"), "doca ocupada"),
+    ("fila", (r"\bfila\b",), "fila"),
+    ("documento", (r"\bnota\b", r"\bnf\b", r"document", r"canhoto", r"\bxml\b"), "documento"),
+    ("avaria", (r"pneu", r"quebr", r"avaria", r"furou", r"vazament", r"amass"), "avaria"),
+    ("acidente", (r"acident", r"batida", r"bateram"), "acidente"),
+    ("atraso", (r"atras",), "atraso"),
+]
+
+NUMEROS = {"um": "1", "uma": "1", "dois": "2", "duas": "2", "tres": "3", "quatro": "4", "cinco": "5",
+           "seis": "6", "sete": "7", "oito": "8", "nove": "9", "dez": "10"}
+
+
+def _status(e: Estado) -> str:
+    if not e.tempo_parado:
+        return f"Ainda não registrei a chegada em {e.destino}. Quando chegar, é só me falar que chegou."
+    return (f"Você tá parado há {e.tempo_parado}. Faltam {e.franquia_restante} de franquia "
+            f"e a estadia acumulada tá em {e.valor or 'R$ 0,00'}.")
+
+
+def _doca(e: Estado) -> str:
+    if e.doca or e.resumo_recebedor:
+        partes = [f"doca {e.doca}" if e.doca else None, e.previsao]
+        dito = ", ".join(p for p in partes if p) or e.resumo_recebedor
+        return f"O recebimento disse: {dito}."
+    if e.ligacao_status == "nao_atendida":
+        return "Liguei pro recebimento e ninguém atendeu. Deixei registrado como prova, e o CCO tá sabendo."
+    return "Ainda sem resposta do recebimento. O CCO tá avisado e, se ele não responder, eu ligo pro recebedor."
+
+
+def _cco(e: Estado) -> str:
+    if e.task_status == "pendente":
+        return (f"O CCO ainda não respondeu: já foram {e.tentativas_cco} tentativas. "
+                "Se passar da terceira sem resposta, eu ligo pro recebimento.")
+    if e.task_status == "confirmada":
+        return "O CCO assumiu o seu caso e tá tratando com o recebedor."
+    if e.task_status == "escalada_recebedor":
+        return "O CCO não respondeu, então eu liguei pro recebimento. " + _doca(e)
+    if e.task_status == "concluida":
+        return "O caso já foi fechado com a descarga."
+    return "Ainda não tem caso aberto com o CCO. Eu abro assim que você chegar."
+
+
+def _motorista(fala: str, t: str, e: Estado) -> Decisao:
+    pergunta = _tem(t, *PERGUNTA)
+    if _tem(t, r"descarreg", r"terminou a descarga", r"terminei", r"liberaram", r"ta vazio", r"acabou a descarga"):
+        return Decisao("Descarga registrada e estadia encerrada. Boa viagem, parceiro!", "confirmar_descarga")
+    if not pergunta and _tem(t, r"\bcheguei\b", r"\bchegamos\b", r"\bchegou\b", r"(to|tou|estou) (na|no) (portaria|patio)",
+                             r"\bna portaria\b", r"\bno patio\b"):
+        return Decisao("Chegada registrada. Avisei o CCO e o contador de estadia começou: são cinco horas de franquia.",
+                       "confirmar_chegada")
+    if pergunta:
+        if _tem(t, r"\bcco\b", r"\bcentral\b"):
+            return Decisao(_cco(e))
+        if _tem(t, r"doca", r"recebe", r"previsao", r"noticia"):
+            return Decisao(_doca(e))
+        if _tem(t, r"tempo", r"parad", r"estadia", r"franquia", r"hora", r"valor", r"quanto"):
+            return Decisao(_status(e))
+    for tipo, padroes, rotulo in OCORRENCIAS:
+        if _tem(t, *padroes):
+            return Decisao(f"Registrei a ocorrência de {rotulo} e o CCO já tá vendo.", "registrar_ocorrencia",
+                           {"tipo": tipo, "descricao": fala})
+    if _tem(t, r"\boi\b", r"\bola\b", r"bom dia", r"boa tarde", r"boa noite", r"\be ai\b", r"tudo bem"):
+        situacao = (f"Você tá parado há {e.tempo_parado} em {e.destino}." if e.tempo_parado
+                    else f"Tô acompanhando a sua entrega em {e.destino}.")
+        return Decisao(f"E aí, {e.nome}! {situacao} Qualquer coisa, me fala.")
+    if pergunta:
+        return Decisao(_status(e))
+    return Decisao("Não peguei direito. Posso registrar a sua chegada, uma ocorrência como fila ou doca ocupada, "
+                   "a descarga, ou te dizer o tempo parado e a estadia.")
+
+
+def _recorte(fala: str, t: str, padrao: str) -> Optional[str]:
+    m = re.search(padrao, t)
+    return fala[m.start():m.end()].strip() if m else None
+
+
+def _recebedor(fala: str, t: str) -> Decisao:
+    doca = None
+    m = re.search(r"doca\s+(\d+|" + "|".join(NUMEROS) + r")\b", t)
+    if m:
+        doca = NUMEROS.get(m.group(1), m.group(1))
+    previsao = (_recorte(fala, t, r"\b(em|daqui)\s+(a\s+)?(uns?\s+|umas?\s+)?(\d+|uma|um|meia|duas|dois)\s+(minutos?|horas?|hora)\b")
+                or _recorte(fala, t, r"\b(as|a partir das)\s+\d{1,2}(\s*h(oras?)?|:\d{2})(\d{2})?"))
+    if _tem(t, r"nao (recebe|recebemos|vamos receber)", r"so amanha", r"\bamanha\b"):
+        previsao = "só amanhã (não recebe hoje)" if "amanha" in t else "não recebe hoje"
+    if doca or previsao:
+        partes = [f"doca {doca}" if doca else None, previsao]
+        return Decisao(f"Anotado: {', '.join(p for p in partes if p)}. Vou passar pro motorista agora. Obrigada!",
+                       "registrar_resposta_recebedor", {"doca": doca, "previsao": previsao, "resumo": fala})
+    return Decisao("Desculpe, é a assistente virtual da transportadora. Qual a previsão de descarga e a doca para o motorista?")
+
+
+def decidir(papel: str, fala: str, estado: Estado) -> Decisao:
+    t = normalizar(fala or "")
+    return _recebedor(fala, t) if papel == "recebedor" else _motorista(fala, t, estado)

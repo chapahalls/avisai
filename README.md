@@ -197,7 +197,7 @@ Obrigatórias: `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`. Recomendadas: `LLM_API_K
 |---|---|---|
 | `AGORA_CUSTOMER_ID` / `AGORA_CUSTOMER_SECRET` | vazio | Basic auth na REST; vazio usa auth por token |
 | `LLM_MODE` | `custom` | `custom` = nosso LLM com ferramentas; `agora` = LLM gerenciado |
-| `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | `gpt-4o-mini` | upstream do nosso LLM; sem chave, usa a contingência por palavras-chave |
+| `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | `gpt-4o-mini` | upstream do nosso LLM (qualquer API compatível com OpenAI); sem chave, usa a contingência |
 | `PUBLIC_URL` | descoberta automática | URL do túnel |
 | `RECEBEDOR_MODO` | `rtc` | `rtc` (plano B) ou `sip` (plano A) |
 | `AGORA_SIP_FROM_NUMBER`, `RECEBEDOR_TELEFONE_E164` | — | plano A |
@@ -208,6 +208,17 @@ Obrigatórias: `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`. Recomendadas: `LLM_API_K
 | `ESTADIA_ACELERACAO` | `1` | relógio da estadia; use `600` na demo |
 | `LIGAR_RECEBEDOR_NA_APROXIMACAO` | `false` | liga também na aproximação |
 | `LIGACAO_TIMEOUT_S` | `180` | sem resposta até aqui, a ligação é registrada como não atendida |
+
+### LLM sem custo (opcional)
+Qualquer API compatível com OpenAI e com suporte a ferramentas serve. Duas opções com plano gratuito:
+- **Groq** (muito rápido, bom para voz): `LLM_BASE_URL=https://api.groq.com/openai/v1`, `LLM_MODEL=llama-3.3-70b-versatile`, `LLM_API_KEY=` gerada em console.groq.com.
+- **Gemini**: `LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai`, `LLM_MODEL=gemini-2.5-flash`, `LLM_API_KEY=` gerada no aistudio.google.com.
+
+Depois de editar o `.env`, rode `docker compose up -d --force-recreate api`.
+
+**Sem chave nenhuma, a demo funciona pela contingência** (`dominio/contingencia.py`), que entende:
+- **motorista:** chegada ("cheguei", "tô na portaria"); ocorrências (fila, doca ocupada, documento, avaria, recusa, atraso, acidente); descarga ("descarreguei"); perguntas sobre tempo parado, estadia, doca e CCO, respondidas com o estado real da rota; saudação;
+- **recebedor:** extrai a doca e a previsão ("a doca 4 libera em 40 minutos", "às 15h", "só amanhã").
 
 ### Ativar a ligação telefônica real (plano A)
 **Twilio (Elastic SIP Trunk), automatizado:**

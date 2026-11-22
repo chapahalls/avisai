@@ -148,3 +148,11 @@ def test_lgpd_sem_audio_nem_saude():
 
     colunas = {c.name for t in SQLModel.metadata.tables.values() for c in t.columns}
     assert not any("audio" in c or "saude" in c for c in colunas)
+
+
+async def test_chegada_por_voz_nao_fala_duas_vezes(client, fake_llm, fake_agora):
+    """O próprio agente responde à fala; a fala proativa de chegada é só para GPS/manual."""
+    sid = await _sessao(client)
+    fake_llm.respostas = [tool_call("confirmar_chegada", "{}"), "Chegada registrada."]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Cheguei"), headers=AUTH)
+    assert not any("contador de estadia" in f for f in fake_agora.falas())
