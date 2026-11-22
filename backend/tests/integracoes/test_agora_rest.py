@@ -66,3 +66,12 @@ async def test_erro_http_vira_agoraerro_com_status():
 async def test_leave_404_e_sucesso():
     respx.post(f"{BASE}/agents/A1/leave").mock(return_value=httpx.Response(404, json={"detail": "not found"}))
     await AgoraRest(_s(agora_customer_id="c", agora_customer_secret="s")).leave("A1", "c", 9001)
+
+
+@respx.mock
+async def test_falha_de_rede_vira_agoraerro():
+    """DNS/conexão caindo não pode vazar como httpx.ConnectError e matar o fluxo."""
+    respx.post(f"{BASE}/agents/A1/speak").mock(side_effect=httpx.ConnectError("Temporary failure in name resolution"))
+    with pytest.raises(AgoraErro) as e:
+        await AgoraRest(_s(agora_customer_id="c", agora_customer_secret="s")).speak("A1", "oi", "APPEND", "c", 9001)
+    assert e.value.status == 503

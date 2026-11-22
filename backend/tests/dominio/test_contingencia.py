@@ -141,3 +141,12 @@ def test_resposta_para_a_central():
 def test_chegada_ja_pede_o_checkin():
     d = ct.decidir("motorista", "cheguei", VAZIO)
     assert "tempo de viagem" in d.texto
+
+
+def test_recebedor_nao_recebe_hoje_marca_recebe_hoje_false():
+    d = ct.decidir("recebedor", "Hoje não recebemos mais, só amanhã", PARADO)
+    assert d.args.get("recebe_hoje") is False
+
+
+def test_recebedor_com_doca_nao_marca_recebe_hoje():
+    assert "recebe_hoje" not in ct.decidir("recebedor", "a doca 4 libera em 40 minutos", PARADO).args

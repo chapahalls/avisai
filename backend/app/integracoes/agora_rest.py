@@ -37,8 +37,12 @@ class AgoraRest:
         return {"Authorization": auth, "Content-Type": "application/json"}
 
     async def _req(self, metodo: str, caminho: str, canal: str, agent_uid: int, corpo: dict | None = None, ok404: bool = False) -> dict:
-        async with httpx.AsyncClient(timeout=30) as c:
-            r = await c.request(metodo, self._url(caminho), json=corpo, headers=self._headers(canal, agent_uid))
+        try:
+            async with httpx.AsyncClient(timeout=30) as c:
+                r = await c.request(metodo, self._url(caminho), json=corpo, headers=self._headers(canal, agent_uid))
+        except httpx.HTTPError as e:  # DNS, conexão, timeout: vira AgoraErro, que os serviços tratam
+            log.error("Agora %s %s -> falha de rede: %s", metodo, caminho, e)
+            raise AgoraErro(503, f"falha de rede: {e}") from e
         if ok404 and r.status_code == 404:
             return {}
         if r.status_code >= 300:

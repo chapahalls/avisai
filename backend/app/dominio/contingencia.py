@@ -189,12 +189,16 @@ def _recebedor(fala: str, t: str) -> Decisao:
         doca = NUMEROS.get(m.group(1), m.group(1))
     previsao = (_recorte(fala, t, r"\b(em|daqui)\s+(a\s+)?(uns?\s+|umas?\s+)?(\d+|uma|um|meia|duas|dois)\s+(minutos?|horas?|hora)\b")
                 or _recorte(fala, t, r"\b(as|a partir das)\s+\d{1,2}(\s*h(oras?)?|:\d{2})(\d{2})?"))
-    if _tem(t, r"nao (recebe|recebemos|vamos receber)", r"so amanha", r"\bamanha\b"):
+    nao_recebe = _tem(t, r"nao (recebe|recebemos|vamos receber)", r"so amanha", r"\bamanha\b")
+    if nao_recebe:
         previsao = "só amanhã (não recebe hoje)" if "amanha" in t else "não recebe hoje"
     if doca or previsao:
         partes = [f"doca {doca}" if doca else None, previsao]
+        args = {"doca": doca, "previsao": previsao, "resumo": fala}
+        if nao_recebe:
+            args["recebe_hoje"] = False  # aplica a regra da transportadora
         return Decisao(f"Anotado: {', '.join(p for p in partes if p)}. Vou passar pro motorista agora. Obrigada!",
-                       "registrar_resposta_recebedor", {"doca": doca, "previsao": previsao, "resumo": fala})
+                       "registrar_resposta_recebedor", args)
     return Decisao("Desculpe, é a assistente virtual da transportadora. Qual a previsão de descarga e a doca para o motorista?")
 
 

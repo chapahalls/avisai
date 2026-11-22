@@ -50,3 +50,17 @@ async def test_regra_da_empresa_define_numero_de_tentativas(container, rota_id):
     t = await tasks.on_chegada(container, rota_id, origem="gps")
     await esperar(lambda: obter(TaskCCO, t.id).status == "escalada_recebedor")
     assert len(eventos("notificacao_cco")) == 2
+
+
+async def test_falha_ao_falar_com_motorista_nao_impede_a_ligacao(container, rota_id, fake_agora):
+    from app.integracoes.agora_rest import AgoraErro
+
+    await sessoes.iniciar_motorista(container, rota_id)
+
+    async def speak_quebrado(*a, **k):
+        raise AgoraErro(503, "rede")
+
+    fake_agora.speak = speak_quebrado
+    t = await tasks.on_chegada(container, rota_id, origem="gps")
+    await esperar(lambda: len(_ligacoes()) == 1)
+    assert obter(TaskCCO, t.id).status == "escalada_recebedor"
