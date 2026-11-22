@@ -8,7 +8,7 @@ from app.infra.models import Empresa, Motorista, RegraEscalonamento, Rota
 from app.seed import seed
 
 
-def test_seed_cria_dados_da_demo(container):
+async def test_seed_cria_dados_da_demo(container):
     rid = seed()
     with sessao() as s:
         assert len(s.exec(select(Empresa)).all()) == 1
@@ -21,7 +21,7 @@ def test_seed_cria_dados_da_demo(container):
     assert regra.max_tentativas == 3
 
 
-def test_seed_idempotente(container):
+async def test_seed_idempotente(container):
     a = seed()
     b = seed()
     assert a == b

@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -68,15 +70,18 @@ def relogio() -> RelogioFixo:
 
 
 @pytest.fixture
-def container(settings, fake_agora, fake_llm, relogio):
+async def container(settings, fake_agora, fake_llm, relogio):
     c = ct.Container(settings=settings, agora=fake_agora, llm=fake_llm, relogio=relogio, eventos=Eventos())
     ct.definir(c)
     yield c
-    ct.cancelar_tarefas()
+    pendentes = [t for t in c.tarefas.values() if not t.done()]
+    for t in pendentes:
+        t.cancel()
+    await asyncio.gather(*pendentes, return_exceptions=True)
 
 
 @pytest.fixture
-def rota_id(container) -> int:
+async def rota_id(container) -> int:
     return seed()
 
 
