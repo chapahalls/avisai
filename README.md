@@ -6,15 +6,25 @@ Copiloto de voz para transportadoras, focado no **caminhão parado**:
 3. Insiste com o CCO e, sem resposta, **liga para o recebedor**.
 4. Registra a resposta do recebedor como prova e a repassa por voz ao motorista.
 
-Time Quarteto Chapahalls · hackathon UNMUTE by Agora · backend e infra: Lucas.
+Time Chapahalls (3 pessoas: Jeferson, Henry e Lucas) · hackathon UNMUTE by Agora · backend e infra: Lucas.
+
+**Versão entregue: tag [`v1.0-entrega`](https://github.com/chapahalls/avisai/releases/tag/v1.0-entrega).** Se houver correção depois, ela sai numa tag nova (`v1.1-entrega`), e a tag mais recente `v*-entrega` é a versão entregue. Licença: [MIT](LICENSE).
 
 Toda a voz roda na **Agora Conversational AI**. O áudio vai do aparelho direto para a nuvem da Agora; este backend é o plano de controle: tokens, `/join`, `/leave`, `/speak` e `/call`, o LLM próprio com ferramentas e as regras de negócio.
 
 ---
 
-## Rodar a partir de um clone limpo (só Docker)
+## Dependências
 
-Pré-requisitos: Docker com Compose v2. Nada roda direto na máquina.
+- **Para rodar:** Docker com Compose v2. Nada roda direto na máquina; as imagens instalam o resto.
+- **Backend (Python 3.12):** FastAPI, Uvicorn, SQLModel, Alembic, psycopg, pydantic-settings, httpx e `agora-agents` (só o gerador de tokens). As versões fixadas estão em `backend/requirements.txt`; as de teste (pytest, pytest-asyncio, respx), em `backend/requirements-dev.txt`.
+- **Infra:** Postgres 16 e cloudflared (túnel público), ambos via `docker-compose.yml`.
+- **Serviços externos:**
+  - Agora Conversational AI (App ID e App Certificate; Customer ID e Secret opcionais);
+  - LLM compatível com OpenAI (opcional; sem ele, vale a contingência);
+  - Twilio, só para a ligação telefônica real, que é opcional.
+
+## Como rodar (clone limpo, só Docker)
 
 ```bash
 git clone https://github.com/chapahalls/avisai.git && cd avisai
@@ -246,12 +256,23 @@ Obrigatórias: `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`. Recomendadas: `LLM_API_K
 | `RECEBEDOR_MODO` | `rtc` | `rtc` (plano B) ou `sip` (plano A) |
 | `AGORA_SIP_FROM_NUMBER`, `RECEBEDOR_TELEFONE_E164` | — | plano A |
 | `ASR_LANGUAGE` | `pt-BR` | idioma do ASR |
+| `ASR_VENDOR` | `ares` | `ares` (ASR da Agora, gerenciado, com palavras-chave; padrão), `deepgram` (gerenciado) ou `openai` (chave própria) |
+| `ASR_MODEL` | vazio | Deepgram: `nova-2` ou `nova-3`; OpenAI: `gpt-4o-mini-transcribe` ou `gpt-4o-transcribe` |
+| `ASR_API_KEY` | vazio | só para `openai`; vazio usa `LLM_API_KEY` se o LLM for a OpenAI |
 | `TTS_VOICE_ID`, `TTS_VOICE_ID_RECEBEDOR` | vozes PT da MiniMax | vozes dos dois agentes |
 | `AGORA_SAL` | `false` | Selective Attention Locking (Beta) no agente do motorista |
 | `CCO_INTERVALO_S`, `CCO_MAX_TENTATIVAS` | `20`, `3` | ritmo do escalonamento (a regra da empresa no seed define 3) |
 | `ESTADIA_ACELERACAO` | `1` | relógio da estadia; use `600` na demo |
 | `LIGAR_RECEBEDOR_NA_APROXIMACAO` | `true` | liga para o recebedor já na aproximação (fluxo do repo de ideias) |
 | `LIGACAO_TIMEOUT_S` | `180` | sem resposta até aqui, a ligação é registrada como não atendida |
+
+### Melhorar o reconhecimento de fala (ASR)
+Se a transcrição vier ruim, troque só o ASR no `.env`. Ferramentas e fala proativa continuam iguais.
+1. **`ASR_VENDOR=ares`** (padrão, grátis, ASR da Agora): suporta pt-BR e recebe **palavras-chave** do domínio (doca, portaria, CT-e, palete, estadia…) mais o destino, o recebedor e a placa da rota. É a melhor opção grátis para os termos da operação.
+2. **`ASR_VENDOR=deepgram`** (grátis, gerenciado): `ASR_MODEL=nova-3` ou `nova-2`, sem palavras-chave.
+3. **`ASR_VENDOR=openai`** (pago): `gpt-4o-mini-transcribe` com um prompt de contexto em PT-BR e os mesmos termos. É a melhor qualidade.
+
+Depois de editar o `.env`, rode `docker compose up -d --force-recreate api` e abra uma sessão nova. O ARES e o Deepgram nova-2 foram aceitos pela Agora (`/join` 200); a qualidade se compara falando, de preferência com fone de ouvido.
 
 ### LLM sem custo (opcional)
 Qualquer API compatível com OpenAI e com suporte a ferramentas serve. Duas opções com plano gratuito:
@@ -303,7 +324,7 @@ Fonte: docs da Agora, via o MCP `mcp.agora.io` e o OpenAPI v2.
 - **Estadia acelerada:** com `ESTADIA_ACELERACAO=600`, 1 s real conta 10 min, para mostrar a franquia de 5 h e o valor em minutos de demo. Sem a variável, o relógio é real. Os intervalos com o CCO também são curtos (20 s).
 - **CCO:** as "notificações" ao CCO (push, painel, ligação) são eventos no stream do painel. Não há envio real de push nem ligação para a central.
 - **Pré-existente / terceiros:**
-  - Agora Conversational AI, com os presets gerenciados Deepgram nova-3 (ASR) e MiniMax (TTS);
+  - Agora Conversational AI, com o ASR da Agora (ARES, com palavras-chave; Deepgram nova-3 como alternativa) e preset gerenciado MiniMax (TTS);
   - OpenAI (LLM);
   - SDK `agora-agents` (só os tokens);
   - Web SDK da Agora nas páginas de teste;

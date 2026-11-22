@@ -86,6 +86,7 @@ async def _iniciar_motorista(c, rota_id: int) -> SessaoAgente:
             canal=sa.canal, token=tokens.token_agente(c.settings, sa.canal, sa.agent_uid),
             agent_uid=sa.agent_uid, remote_uid=sa.user_uid, prompt=prompt, saudacao=saudacao,
             voice_id=c.settings.tts_voice_id, llm_url=llm_url(c, sa.id), sessao_id=sa.id, idle_timeout=300,
+            termos_rota=[r.destino_nome, r.origem_nome, r.recebedor_empresa, r.placa, nome_mot.split()[0]],
         )
         agent_id = await c.agora.join(corpo)
     except Exception as e:
