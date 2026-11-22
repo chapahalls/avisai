@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     agora_sal: bool = False
     asr_language: str = "pt-BR"
     # ASR: deepgram (gerenciado, nova-3|nova-2) | ares (ASR da Agora, gerenciado, com palavras-chave) | openai (BYOK)
-    asr_vendor: str = "deepgram"
+    asr_vendor: str = "ares"
     asr_model: str = ""  # vazio = padrão do fornecedor (nova-3 / gpt-4o-mini-transcribe)
     asr_api_key: str = ""  # openai; vazio = usa LLM_API_KEY se o LLM for a OpenAI
     asr_keywords: list[str] = [

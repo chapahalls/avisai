@@ -246,8 +246,8 @@ Obrigatórias: `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`. Recomendadas: `LLM_API_K
 | `RECEBEDOR_MODO` | `rtc` | `rtc` (plano B) ou `sip` (plano A) |
 | `AGORA_SIP_FROM_NUMBER`, `RECEBEDOR_TELEFONE_E164` | — | plano A |
 | `ASR_LANGUAGE` | `pt-BR` | idioma do ASR |
-| `ASR_VENDOR` | `deepgram` | `deepgram` (gerenciado), `ares` (ASR da Agora, gerenciado, com palavras-chave) ou `openai` (chave própria) |
-| `ASR_MODEL` | `nova-3` | Deepgram: `nova-2` ou `nova-3`; OpenAI: `gpt-4o-mini-transcribe` ou `gpt-4o-transcribe` |
+| `ASR_VENDOR` | `ares` | `ares` (ASR da Agora, gerenciado, com palavras-chave; padrão), `deepgram` (gerenciado) ou `openai` (chave própria) |
+| `ASR_MODEL` | vazio | Deepgram: `nova-2` ou `nova-3`; OpenAI: `gpt-4o-mini-transcribe` ou `gpt-4o-transcribe` |
 | `ASR_API_KEY` | vazio | só para `openai`; vazio usa `LLM_API_KEY` se o LLM for a OpenAI |
 | `TTS_VOICE_ID`, `TTS_VOICE_ID_RECEBEDOR` | vozes PT da MiniMax | vozes dos dois agentes |
 | `AGORA_SAL` | `false` | Selective Attention Locking (Beta) no agente do motorista |
@@ -258,8 +258,8 @@ Obrigatórias: `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`. Recomendadas: `LLM_API_K
 
 ### Melhorar o reconhecimento de fala (ASR)
 Se a transcrição vier ruim, troque só o ASR no `.env`. Ferramentas e fala proativa continuam iguais.
-1. **`ASR_VENDOR=ares`** (grátis, ASR da Agora): suporta pt-BR e recebe **palavras-chave** do domínio (doca, portaria, CT-e, palete, estadia…) mais o destino, o recebedor e a placa da rota. É a melhor opção grátis para os termos da operação.
-2. **`ASR_VENDOR=deepgram` com `ASR_MODEL=nova-2`** (grátis, gerenciado): alternativa ao `nova-3`.
+1. **`ASR_VENDOR=ares`** (padrão, grátis, ASR da Agora): suporta pt-BR e recebe **palavras-chave** do domínio (doca, portaria, CT-e, palete, estadia…) mais o destino, o recebedor e a placa da rota. É a melhor opção grátis para os termos da operação.
+2. **`ASR_VENDOR=deepgram`** (grátis, gerenciado): `ASR_MODEL=nova-3` ou `nova-2`, sem palavras-chave.
 3. **`ASR_VENDOR=openai`** (pago): `gpt-4o-mini-transcribe` com um prompt de contexto em PT-BR e os mesmos termos. É a melhor qualidade.
 
 Depois de editar o `.env`, rode `docker compose up -d --force-recreate api` e abra uma sessão nova. O ARES e o Deepgram nova-2 foram aceitos pela Agora (`/join` 200); a qualidade se compara falando, de preferência com fone de ouvido.
@@ -314,7 +314,7 @@ Fonte: docs da Agora, via o MCP `mcp.agora.io` e o OpenAPI v2.
 - **Estadia acelerada:** com `ESTADIA_ACELERACAO=600`, 1 s real conta 10 min, para mostrar a franquia de 5 h e o valor em minutos de demo. Sem a variável, o relógio é real. Os intervalos com o CCO também são curtos (20 s).
 - **CCO:** as "notificações" ao CCO (push, painel, ligação) são eventos no stream do painel. Não há envio real de push nem ligação para a central.
 - **Pré-existente / terceiros:**
-  - Agora Conversational AI, com os presets gerenciados Deepgram nova-3 (ASR) e MiniMax (TTS);
+  - Agora Conversational AI, com o ASR da Agora (ARES, com palavras-chave; Deepgram nova-3 como alternativa) e preset gerenciado MiniMax (TTS);
   - OpenAI (LLM);
   - SDK `agora-agents` (só os tokens);
   - Web SDK da Agora nas páginas de teste;

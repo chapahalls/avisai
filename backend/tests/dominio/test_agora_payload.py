@@ -10,14 +10,21 @@ def _join(**kw):
                           termos_rota=["Mercadão Campinas", "RST-4B21"])
 
 
-def test_padrao_deepgram_nova3_gerenciado_ptbr():
+def test_padrao_e_ares_com_palavras_chave():
     j = _join()
+    asr = j["properties"]["asr"]
+    assert asr["vendor"] == "ares" and asr["language"] == "pt-BR" and "doca" in asr["keywords"]
+    assert "deepgram" not in j["preset"]
+
+
+def test_deepgram_nova3_gerenciado_ptbr():
+    j = _join(asr_vendor="deepgram")
     assert j["properties"]["asr"] == {"vendor": "deepgram", "language": "pt-BR", "params": {"language": "pt-BR"}}
     assert "deepgram_nova_3" in j["preset"]
 
 
 def test_deepgram_nova2():
-    j = _join(asr_model="nova-2")
+    j = _join(asr_vendor="deepgram", asr_model="nova-2")
     assert "deepgram_nova_2" in j["preset"] and "deepgram_nova_3" not in j["preset"]
 
 

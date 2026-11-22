@@ -18,15 +18,15 @@ async def test_dada_rota_quando_cria_sessao_entao_join_com_llm_proprio_e_ptbr(cl
     assert p["channel"] == "avisai-rota-1"
     assert p["agent_rtc_uid"] == "9001"
     assert p["remote_rtc_uids"] == ["1001"]
-    assert p["asr"]["language"] == "pt-BR"
-    assert p["asr"]["params"]["language"] == "pt-BR"
+    assert p["asr"]["vendor"] == "ares" and p["asr"]["language"] == "pt-BR"
+    assert {"doca", "RST-4B21", "Mercadão Campinas, CD Norte"} <= set(p["asr"]["keywords"])
     assert p["interruption"]["enable"] is True
     assert p["llm"]["vendor"] == "custom"
     assert p["llm"]["url"] == f"https://avisai.test/v1/chat/completions?sessao={s['id']}"
     assert p["llm"]["headers"]["X-Avisai-Sessao"] == str(s["id"])
     assert p["llm"]["api_key"] == "segredo"
     assert "openai_gpt_4o_mini" not in corpo["preset"]
-    assert "deepgram_nova_3" in corpo["preset"] and "minimax" in corpo["preset"]
+    assert "minimax" in corpo["preset"] and "deepgram" not in corpo["preset"]
 
 
 async def test_join_segue_boas_praticas_da_agora(client, fake_agora, container):
