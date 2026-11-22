@@ -6,15 +6,25 @@ Copiloto de voz para transportadoras, focado no **caminhão parado**:
 3. Insiste com o CCO e, sem resposta, **liga para o recebedor**.
 4. Registra a resposta do recebedor como prova e a repassa por voz ao motorista.
 
-Time Quarteto Chapahalls · hackathon UNMUTE by Agora · backend e infra: Lucas.
+Time Chapahalls (3 pessoas: Jeferson, Henry e Lucas) · hackathon UNMUTE by Agora · backend e infra: Lucas.
+
+**Versão entregue: tag [`v1.0-entrega`](https://github.com/chapahalls/avisai/releases/tag/v1.0-entrega).** Se houver correção depois, ela sai numa tag nova (`v1.1-entrega`), e a tag mais recente `v*-entrega` é a versão entregue. Licença: [MIT](LICENSE).
 
 Toda a voz roda na **Agora Conversational AI**. O áudio vai do aparelho direto para a nuvem da Agora; este backend é o plano de controle: tokens, `/join`, `/leave`, `/speak` e `/call`, o LLM próprio com ferramentas e as regras de negócio.
 
 ---
 
-## Rodar a partir de um clone limpo (só Docker)
+## Dependências
 
-Pré-requisitos: Docker com Compose v2. Nada roda direto na máquina.
+- **Para rodar:** Docker com Compose v2. Nada roda direto na máquina; as imagens instalam o resto.
+- **Backend (Python 3.12):** FastAPI, Uvicorn, SQLModel, Alembic, psycopg, pydantic-settings, httpx e `agora-agents` (só o gerador de tokens). As versões fixadas estão em `backend/requirements.txt`; as de teste (pytest, pytest-asyncio, respx), em `backend/requirements-dev.txt`.
+- **Infra:** Postgres 16 e cloudflared (túnel público), ambos via `docker-compose.yml`.
+- **Serviços externos:**
+  - Agora Conversational AI (App ID e App Certificate; Customer ID e Secret opcionais);
+  - LLM compatível com OpenAI (opcional; sem ele, vale a contingência);
+  - Twilio, só para a ligação telefônica real, que é opcional.
+
+## Como rodar (clone limpo, só Docker)
 
 ```bash
 git clone https://github.com/chapahalls/avisai.git && cd avisai
