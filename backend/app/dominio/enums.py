@@ -96,4 +96,6 @@ class TipoEvento(StrEnum):
     ROTA_PUBLICADA = "rota_publicada"
     ROTA_ATRIBUIDA = "rota_atribuida"
     PERGUNTA_DOCUMENTO = "pergunta_documento"
+    OCORRENCIA_DETALHADA = "ocorrencia_detalhada"
+    OCORRENCIA_GRAVE = "ocorrencia_grave"
     ARQUIVO_ADICIONADO = "arquivo_adicionado"

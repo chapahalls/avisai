@@ -80,6 +80,13 @@ def pendencias(rota_id: int) -> list[str]:
     fc = reportes.faltantes_abertos(rota_id, "checkin")
     if fc:
         out.append("Check-in pendente; pergunte só: " + ", ".join(reportes.ROTULOS[k] for k in fc) + " (registrar_checkin).")
+    from ..dominio import ocorrencias as roteiro
+    from . import tasks as tasks_srv
+
+    oc = tasks_srv.ocorrencia_aberta(rota_id)
+    if oc and oc.faltantes:
+        out.append(f"Ocorrência de {oc.tipo} aberta: aprofunde, uma pergunta por vez. Próxima: "
+                   f"'{roteiro.proxima(oc.tipo, oc.faltantes)}' (registre com detalhar_ocorrencia).")
     sol = central.pendente(rota_id)
     if sol:
         out.append(f"Pergunta da central aguardando resposta do motorista: '{sol.pergunta}' (use responder_central).")
@@ -100,7 +107,9 @@ def _transcrever(sa: SessaoAgente, quem: str, texto: str) -> None:
 
 def estado_contingencia(c, sa: SessaoAgente) -> contingencia.Estado:
     from ..dominio.estadia import falar_horas
+    from . import tasks as tasks_srv
 
+    oc = tasks_srv.ocorrencia_aberta(sa.rota_id)
     r, nome, _ = consultas.contexto_rota(sa.rota_id)
     e = consultas.ultima_estadia(sa.rota_id)
     x = consultas.resumo_estadia(c, e) if e else None
@@ -118,6 +127,8 @@ def estado_contingencia(c, sa: SessaoAgente) -> contingencia.Estado:
         ligacao_status=lig.status if lig else None,
         retirada_pendente=_retirada_pendente(sa.rota_id),
         chegada_pendente=_chegada_pendente(sa.rota_id),
+        ocorrencia_tipo=oc.tipo if oc else None,
+        ocorrencia_faltantes=(list(oc.faltantes) if oc else None),
         inicial_faltantes=reportes.faltantes_abertos(sa.rota_id, "inicial"),
         checkin_faltantes=reportes.faltantes_abertos(sa.rota_id, "checkin"),
         pergunta_central=(central.pendente(sa.rota_id).pergunta if central.pendente(sa.rota_id) else None),

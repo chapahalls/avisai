@@ -111,6 +111,9 @@ class Ocorrencia(SQLModel, table=True):
     lng: Optional[float] = None
     timestamp: datetime = Field(default_factory=agora)
     transcricao: Optional[str] = None
+    detalhes: dict = Field(default_factory=dict, sa_column=Column(JSON))  # respostas do aprofundamento
+    faltantes: list = Field(default_factory=list, sa_column=Column(JSON))  # perguntas ainda não respondidas
+    completa: bool = False
 
 
 class EventoGeo(SQLModel, table=True):

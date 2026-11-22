@@ -8,7 +8,7 @@ Copiloto de voz para transportadoras, focado no **caminhão parado**:
 
 Time Chapahalls (3 pessoas: Jeferson, Henry e Lucas) · hackathon UNMUTE by Agora · backend e infra: Lucas.
 
-**Versão entregue: tag [`v1.2-entrega`](https://github.com/chapahalls/avisai/releases/tag/v1.2-entrega)** (substitui `v1.0-entrega` e `v1.1-entrega`). Se houver nova correção, ela sai numa tag nova, e a tag `v*-entrega` mais recente é a versão entregue. Licença: [MIT](LICENSE).
+**Versão entregue: tag [`v1.3-entrega`](https://github.com/chapahalls/avisai/releases/tag/v1.3-entrega)** (substitui as anteriores). Se houver nova correção, ela sai numa tag nova, e a tag `v*-entrega` mais recente é a versão entregue. Licença: [MIT](LICENSE).
 
 **Repositórios do projeto** (todos públicos):
 | Repo | O quê | Responsável |
@@ -132,6 +132,7 @@ As variáveis do doc também valem: `AGORA_REST_KEY` e `AGORA_REST_SECRET` (equi
 3. **Chegada:** o GPS detecta e o agente pergunta **"Confirma a chegada?"**. A prova (`EventoGeo`) só fica validada com GPS do celular + rastreador + voz. Abre a Task (`TaskCreated`) e a estadia, e o **check-in por voz** com campos obrigatórios (estado da carga, tempo de viagem, problemas). O agente pergunta **só o que faltou** (`ReportFieldMissing`).
 4. **CCO:** 3 tentativas, e sem resposta o agente liga para o recebedor (já existia).
 5. **Pedido da central:** `POST /rotas/{id}/solicitacoes {pergunta}`. O agente pergunta ao motorista e a resposta volta estruturada (`GET /rotas/{id}/solicitacoes`).
+8. **Ocorrência aprofundada:** depois de registrar, o agente faz as perguntas do tipo, **uma por vez**. Em acidente: feridos, envolvimento do caminhão, se dá pra seguir e local; em avaria: o que houve, se precisa de socorro e a carga; em fila: quantos caminhões e previsão. Acidente com ferido leva o agente a orientar ligar **192 (SAMU) ou 193 (Bombeiros)** e gera `ocorrencia_grave` (prioridade crítica) para o CCO. O quadro completo sai em `ocorrencia_detalhada` (`OccurrenceDetailed`). Funciona com o LLM (ferramenta `detalhar_ocorrencia`) e na contingência.
 7. **Pergunta sobre a NF ou o CT-e por voz:** a ferramenta `consultar_documento` responde com o número, peso, valor, destinatário, itens, frete, placa ou chave ("Pela NF-e 000.482.913, o peso é 28.000 kg"). A resposta sai só dos campos do documento, cita qual documento usou e diz "não encontrei" quando o campo não existe; nunca arredonda. O evento é `pergunta_documento`, que aparece como `DocumentQuestionAnswered` no `/events`. Funciona também sem LLM, pela contingência. Os documentos são fictícios.
 6. **Dupla prova de GPS:** `POST /rotas/{id}/posicao` com `fonte=rastreador` registra o GPS do caminhão. Na retirada e na chegada, se celular e rastreador estiverem a mais de 500 m, o evento fica `nao_validado` e sai `divergencia_gps` para o CCO. O simulador manda os dois GPS (`--divergir` força a divergência).
 

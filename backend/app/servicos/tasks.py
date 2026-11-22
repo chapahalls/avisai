@@ -213,8 +213,14 @@ async def confirmar_descarga(c, rota_id: int, por: str = "motorista", transcrica
 def registrar_ocorrencia(c, rota_id: int, tipo: str, descricao: str, transcricao: Optional[str] = None) -> Ocorrencia:
     with sessao() as s:
         r = s.get(Rota, rota_id)
+        from ..dominio import ocorrencias as roteiro
+
+        # fecha ocorrências antigas ainda abertas (o motorista mudou de assunto)
+        for antiga in s.exec(select(Ocorrencia).where(Ocorrencia.rota_id == rota_id, Ocorrencia.completa == False)).all():  # noqa: E712
+            antiga.completa = True
+            s.add(antiga)
         o = Ocorrencia(rota_id=rota_id, tipo=tipo, descricao=descricao, lat=r.ultima_lat, lng=r.ultima_lng,
-                       transcricao=transcricao, timestamp=c.relogio.agora())
+                       transcricao=transcricao, timestamp=c.relogio.agora(), faltantes=roteiro.campos(tipo))
         s.add(o)
         s.commit()
         s.refresh(o)
@@ -223,3 +229,40 @@ def registrar_ocorrencia(c, rota_id: int, tipo: str, descricao: str, transcricao
         # atraso na estrada: avisa o recebedor do novo horário (quem perde a janela espera mais na chegada)
         c.em_segundo_plano(f"lig-atraso-{rota_id}", ligacoes.ligar(c, rota_id, motivo="atraso", detalhe=descricao))
     return o
+
+
+def ocorrencia_aberta(rota_id: int) -> Optional[Ocorrencia]:
+    with sessao() as s:
+        return s.exec(select(Ocorrencia).where(Ocorrencia.rota_id == rota_id, Ocorrencia.completa == False)  # noqa: E712
+                      .order_by(Ocorrencia.id.desc())).first()
+
+
+def detalhar_ocorrencia(c, rota_id: int, campos: dict, transcricao: Optional[str] = None) -> dict:
+    """Registra respostas do aprofundamento; devolve a próxima pergunta (uma por vez) ou fecha a ocorrência."""
+    from ..dominio import ocorrencias as roteiro
+
+    aberta = ocorrencia_aberta(rota_id)
+    if not aberta:
+        return {"ok": False, "mensagem": "Não há ocorrência aberta para detalhar."}
+    validos = {k: str(v).strip() for k, v in (campos or {}).items() if k in roteiro.campos(aberta.tipo) and str(v).strip()}
+    with sessao() as s:
+        o = s.get(Ocorrencia, aberta.id)
+        era_grave = roteiro.grave(o.tipo, o.detalhes or {})
+        o.detalhes = {**(o.detalhes or {}), **validos}
+        o.faltantes = [k for k in roteiro.campos(o.tipo) if k not in o.detalhes]
+        o.completa = not o.faltantes
+        s.add(o)
+        s.commit()
+        s.refresh(o)
+    grave = roteiro.grave(o.tipo, o.detalhes)
+    if grave and not era_grave:
+        c.eventos.registrar(TipoEvento.OCORRENCIA_GRAVE,
+                            f"URGENTE: acidente com ferido na rota {rota_id}. Motorista orientado a ligar 192/193.",
+                            rota_id, ocorrencia_id=o.id, prioridade="critica", detalhes=o.detalhes)
+    if o.completa:
+        c.eventos.registrar(TipoEvento.OCORRENCIA_DETALHADA,
+                            f"Ocorrência ({o.tipo}) detalhada: {roteiro.resumo(o.tipo, o.descricao, o.detalhes)}",
+                            rota_id, ocorrencia_id=o.id, tipo_ocorrencia=o.tipo, detalhes=o.detalhes, transcricao=transcricao)
+    return {"ok": True, "completa": o.completa, "grave": grave, "faltando": o.faltantes,
+            "pergunte_agora": roteiro.proxima(o.tipo, o.faltantes),
+            "orientacao": "Se ainda não ligaram, oriente ligar 192 (SAMU) ou 193 (Bombeiros)." if grave else None}

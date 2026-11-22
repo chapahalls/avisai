@@ -150,3 +150,9 @@ def test_recebedor_nao_recebe_hoje_marca_recebe_hoje_false():
 
 def test_recebedor_com_doca_nao_marca_recebe_hoje():
     assert "recebe_hoje" not in ct.decidir("recebedor", "a doca 4 libera em 40 minutos", PARADO).args
+
+
+def test_problema_na_portaria_e_ocorrencia_nao_chegada():
+    d = ct.decidir("motorista", "Tem uma fila de caminhões aqui na portaria", PARADO)
+    assert d.ferramenta == "registrar_ocorrencia" and d.args["tipo"] == "fila"
+    assert "caminhões" in d.texto  # já pergunta quantos na frente

@@ -183,8 +183,15 @@ def main() -> int:
     resp = falar(S, "Foram três horas de viagem, sem problema")
     etapa("5d. Check-in completo", any(e["tipo"] == "relatorio" and e["dados"].get("tipo_reporte") == "checkin"
                                        for e in eventos(R)), f"agente: {resp}")
-    resp = falar(S, "Tem uma fila de três caminhões")
-    etapa("5e. Ocorrência por voz", "ocorrencia" in tipos(R), f"agente: {resp}")
+    resp = falar(S, "Tem uma fila de caminhões aqui na portaria")
+    etapa("5e. Ocorrência por voz e o agente se aprofunda (pergunta de acompanhamento)",
+          any(e["tipo"] == "ocorrencia" and e["dados"].get("tipo_ocorrencia") == "fila" for e in eventos(R))
+          and "caminhões" in resp and "?" in resp, f"agente: {resp}")
+    r1 = falar(S, "Uns cinco caminhões na frente")
+    r2 = falar(S, "Disseram que em meia hora")
+    etapa("5e2. Respostas do aprofundamento viram ocorrência detalhada para o CCO",
+          any(e["tipo"] == "ocorrencia_detalhada" and e["dados"].get("tipo_ocorrencia") == "fila"
+              and e["dados"]["detalhes"].get("quantos") for e in eventos(R)), f"agente: {r1} / {r2}")
     resp = falar(S, "Qual o peso da nota?")
     etapa("5f. Pergunta sobre a NF responde com o documento", "20.000 kg" in resp and "NF-e" in resp, f"agente: {resp}")
     resp = falar(S, "Quanto tempo eu tô parado?")

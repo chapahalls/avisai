@@ -44,6 +44,8 @@ TIPO_DOMINIO = {
     "descarga": "UnloadConfirmed",
     "rota_atribuida": "RouteAssigned",
     "pergunta_documento": "DocumentQuestionAnswered",
+    "ocorrencia_detalhada": "OccurrenceDetailed",
+    "ocorrencia_grave": "OccurrenceCritical",
     "arquivo_adicionado": "TripFileAdded",
     "rota_publicada": "RoutePublished",
     # extensões (fora da lista do doc)

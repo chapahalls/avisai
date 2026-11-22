@@ -26,8 +26,16 @@ async def _chegada(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
 
 
 async def _ocorrencia(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    from ..dominio import ocorrencias as roteiro
+
     o = tasks.registrar_ocorrencia(c, sa.rota_id, args.get("tipo", "outro"), args.get("descricao") or fala, transcricao=fala)
-    return {"ok": True, "ocorrencia_id": o.id}
+    return {"ok": True, "ocorrencia_id": o.id, "faltando": o.faltantes,
+            "pergunte_agora": roteiro.proxima(o.tipo, o.faltantes),
+            "instrucao": "Não encerre no 'registrei': faça as perguntas, uma por vez, e registre cada resposta com detalhar_ocorrencia."}
+
+
+async def _detalhar(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    return tasks.detalhar_ocorrencia(c, sa.rota_id, args, transcricao=fala)
 
 
 async def _descarga(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
@@ -117,6 +125,25 @@ REGISTRO: dict[str, Ferramenta] = {
             "descricao": {"type": "string", "description": "Descrição curta e fiel do relato."}},
          "required": ["tipo", "descricao"]},
         _ocorrencia),
+    "detalhar_ocorrencia": Ferramenta(
+        Papel.MOTORISTA, "Registra as respostas do motorista às perguntas de aprofundamento da ocorrência aberta. "
+        "Passe só os campos que ele respondeu; o sistema devolve a próxima pergunta (pergunte_agora).",
+        {"type": "object", "properties": {
+            "feridos": {"type": "string", "description": "acidente: 'sim' ou 'não'"},
+            "envolvido": {"type": "string", "description": "acidente: se o caminhão se envolveu"},
+            "consegue_seguir": {"type": "string", "description": "'sim' ou 'não'"},
+            "local": {"type": "string", "description": "rodovia, km, referência"},
+            "o_que": {"type": "string", "description": "avaria: o que aconteceu"},
+            "carga": {"type": "string", "description": "avaria: se a carga foi afetada"},
+            "quanto": {"type": "string", "description": "atraso: quanto tempo"},
+            "motivo": {"type": "string"},
+            "quantos": {"type": "string", "description": "fila: caminhões na frente"},
+            "previsao": {"type": "string"},
+            "outra_doca": {"type": "string"},
+            "qual": {"type": "string", "description": "documento pedido"},
+            "quem": {"type": "string"},
+            "detalhe": {"type": "string"}}},
+        _detalhar),
     "confirmar_descarga": Ferramenta(
         Papel.MOTORISTA, "Motorista confirmou que a carga foi descarregada. Encerra a estadia e a Task.",
         {"type": "object", "properties": {"observacao": {"type": "string"}}},

@@ -25,6 +25,8 @@ class Estado:
     ligacao_status: Optional[str] = None
     retirada_pendente: bool = False
     chegada_pendente: bool = False
+    ocorrencia_tipo: Optional[str] = None
+    ocorrencia_faltantes: Optional[list] = None
     inicial_faltantes: Optional[list] = None
     checkin_faltantes: Optional[list] = None
     pergunta_central: Optional[str] = None
@@ -144,7 +146,8 @@ def _motorista(fala: str, t: str, e: Estado) -> Decisao:
                        "confirmar_chegada")
     if _tem(t, r"descarreg", r"terminou a descarga", r"terminei", r"liberaram", r"ta vazio", r"acabou a descarga"):
         return Decisao("Descarga registrada e estadia encerrada. Boa viagem, parceiro!", "confirmar_descarga")
-    if not pergunta and _tem(t, r"\bcheguei\b", r"\bchegamos\b", r"\bchegou\b", r"(to|tou|estou) (na|no) (portaria|patio)",
+    relata_problema = any(_tem(t, *p) for _, p, _ in OCORRENCIAS)
+    if not pergunta and not relata_problema and _tem(t, r"\bcheguei\b", r"\bchegamos\b", r"\bchegou\b", r"(to|tou|estou) (na|no) (portaria|patio)",
                              r"\bna portaria\b", r"\bno patio\b"):
         return Decisao("Chegada registrada, CCO avisado e estadia contando. Me conta: como tá a carga, "
                        "quanto tempo de viagem e se teve algum problema?", "confirmar_chegada")
@@ -167,10 +170,26 @@ def _motorista(fala: str, t: str, e: Estado) -> Decisao:
             return Decisao(_doca(e))
         if _tem(t, r"tempo", r"parad", r"estadia", r"franquia", r"hora", r"valor", r"quanto"):
             return Decisao(_status(e))
+    outro_problema = any(_tem(t, *p) for tp, p, _ in OCORRENCIAS if tp != e.ocorrencia_tipo)
+    if e.ocorrencia_faltantes and not pergunta and not outro_problema:
+        from . import ocorrencias as roteiro
+
+        campo = e.ocorrencia_faltantes[0]
+        valor = roteiro.extrair(campo, fala)
+        restantes = e.ocorrencia_faltantes[1:]
+        prox = roteiro.proxima(e.ocorrencia_tipo, restantes)
+        alerta = ""
+        if roteiro.grave(e.ocorrencia_tipo, {campo: valor}):
+            alerta = ("Se ainda não ligaram, liga agora pro SAMU no 192 ou pros bombeiros no 193. "
+                      "Já alertei o CCO como urgente. ")
+        texto = alerta + (f"Anotado. {prox}" if prox else "Anotado, passei tudo pro CCO. Qualquer novidade, me fala.")
+        return Decisao(texto, "detalhar_ocorrencia", {campo: valor})
     for tipo, padroes, rotulo in OCORRENCIAS:
         if _tem(t, *padroes):
-            return Decisao(f"Registrei a ocorrência de {rotulo} e o CCO já tá vendo.", "registrar_ocorrencia",
-                           {"tipo": tipo, "descricao": fala})
+            from . import ocorrencias as roteiro
+
+            return Decisao(f"Registrei a ocorrência de {rotulo} e o CCO já tá vendo. {roteiro.proxima(tipo, roteiro.campos(tipo))}",
+                           "registrar_ocorrencia", {"tipo": tipo, "descricao": fala})
     if _tem(t, r"\boi\b", r"\bola\b", r"bom dia", r"boa tarde", r"boa noite", r"\be ai\b", r"tudo bem"):
         situacao = (f"Você tá parado há {e.tempo_parado} em {e.destino}." if e.tempo_parado
                     else f"Tô acompanhando a sua entrega em {e.destino}.")
