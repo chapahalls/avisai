@@ -13,12 +13,16 @@ export type TipoEvento =
   | "ligacao_recebedor" | "ligacao_falhou" | "fallback_plano_b" | "ligacao_nao_atendida" | "resposta_recebedor"
   | "ocorrencia" | "descarga" | "fala_motorista" | "fala_recebedor" | "fala_agente"
   | "retirada_detectada" | "retirada" | "relatorio" | "campo_faltante" | "task_criada" | "aviso_recebedor"
-  | "nao_recebe_hoje" | "pedido_central" | "resposta_central" | "divergencia_gps" | "rota_publicada" | "rota_atribuida";
+  | "nao_recebe_hoje" | "pedido_central" | "resposta_central" | "divergencia_gps" | "rota_publicada" | "rota_atribuida"
+  | "pergunta_documento" | "chamado_cco_aberto" | "chamado_cco_lembrete" | "chamado_cco_respondido" | "chamado_cco_timeout"
+  | "alerta_motorista" | "decisao_agente"
+  | "mensagem_motorista_enviada" | "mensagem_motorista_falada" | "mensagem_motorista_respondida" | "motorista_offline"
+  | "chamada_twilio_falhou" | "chamada_agora_iniciada" | "chamada_agora_atendida" | "chamada_sem_resposta" | "escalada_supervisor";
 
 export interface Sessao {
   id: number;
   rota_id: number;
-  papel: "motorista" | "recebedor";
+  papel: "motorista" | "recebedor" | "operador";
   canal: string;
   agent_uid: number;
   user_uid: number;
@@ -90,6 +94,27 @@ export interface Ligacao {
   transcricao: { quem: "recebedor" | "agente"; texto: string; ts: number }[];
 }
 
+export interface ChamadoCCO {
+  id: number;
+  rota_id: number;
+  tipo: string;
+  assunto: string;
+  descricao: string;
+  km: number | null;
+  rodovia: string | null;
+  ocorrencia_id: number | null;
+  status: "coletando" | "aguardando_cco" | "respondido" | "timeout";
+  tentativas: number;
+  max_tentativas: number;
+  intervalo_s: number;
+  criada_em: string;
+  ultima_notificacao: string | null;
+  respondida_em: string | null;
+  resposta: string | null;
+  respondido_por: string | null;
+  transcricao: string | null;
+}
+
 export interface Rota {
   id: number;
   status: StatusRota;
@@ -121,6 +146,7 @@ export interface Snapshot {
   ligacoes: Ligacao[];
   ocorrencias: { id: number; rota_id: number; tipo: string; descricao: string; timestamp: string }[];
   eventos: EventoStream[];
+  chamados?: ChamadoCCO[];
 }
 
 /** Mensagens do SSE (/cco/stream, `event:`) e do WS (/ws, campo `canal`). */
@@ -129,12 +155,20 @@ export interface MensagensStream {
   evento: EventoStream;
   task: { task: TaskCCO };
   posicao: { rota_id: number; lat: number; lng: number; distancia_m: number; eta_min: number; status: StatusRota };
-  fala: { rota_id: number; papel: "motorista" | "recebedor"; texto: string };
+  fala: { rota_id: number; papel: "motorista" | "recebedor" | "operador"; texto: string };
   contador: { estadias: Estadia[] };
   reset: { rota_id: number };
+  chamado: { chamado: ChamadoCCO };
 }
 export type CanalStream = keyof MensagensStream;
-export const CANAIS: CanalStream[] = ["snapshot", "evento", "task", "posicao", "fala", "contador", "reset"];
+export const CANAIS: CanalStream[] = ["snapshot", "evento", "task", "posicao", "fala", "contador", "reset", "chamado"];
 
 /** UIDs fixos (README > Canais e UIDs). */
-export const UID = { MOTORISTA: 1001, CCO: 2001, RECEBEDOR: 3001, AGENTE_MOTORISTA: 9001, AGENTE_RECEBEDOR: 9002 } as const;
+export const UID = {
+  MOTORISTA: 1001,
+  CCO: 2001,
+  RECEBEDOR: 3001,
+  AGENTE_MOTORISTA: 9001,
+  AGENTE_RECEBEDOR: 9002,
+  AGENTE_OPERADOR: 9003,
+} as const;

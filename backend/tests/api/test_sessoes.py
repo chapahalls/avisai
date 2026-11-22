@@ -58,12 +58,14 @@ async def test_prompt_do_motorista_em_ptbr_com_dados_da_carga(client, fake_agora
     assert "Carlos" in llm["greeting_message"]
 
 
-async def test_com_llm_mode_agora_entao_preset_inclui_llm_gerenciado(client, fake_agora, container):
+async def test_sessao_do_motorista_forca_gateway_auditavel_mesmo_com_llm_gerenciado(client, fake_agora, container):
     container.settings.llm_mode = "agora"
-    await client.post("/sessions", json={"rota_id": 1})
+    sessao = (await client.post("/sessions", json={"rota_id": 1})).json()
     corpo = fake_agora.ultimo_join()
-    assert "openai_gpt_4o_mini" in corpo["preset"]
-    assert "url" not in corpo["properties"]["llm"]
+    assert sessao["llm_mode"] == "custom"
+    assert corpo["properties"]["llm"]["vendor"] == "custom"
+    assert corpo["properties"]["llm"]["url"] == f"https://avisai.test/v1/chat/completions?sessao={sessao['id']}"
+    assert "openai_gpt_4o_mini" not in corpo["preset"]
 
 
 async def test_quando_agora_falha_entao_502_e_sessao_falhou(client, fake_agora):

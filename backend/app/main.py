@@ -47,6 +47,7 @@ def health():
     return {
         "ok": True,
         "agora_configurada": s.agora_configurada(),
+        "twilio_configurado": s.twilio_configurada(),
         "auth_agora": "basic" if s.agora_customer_id else "token",
         "llm_mode": s.llm_mode,
         "llm_upstream": bool(s.llm_api_key),

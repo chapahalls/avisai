@@ -21,6 +21,7 @@ UID_CCO = 2001
 UID_RECEBEDOR = 3001
 UID_AGENTE_MOTORISTA = 9001
 UID_AGENTE_RECEBEDOR = 9002
+UID_AGENTE_OPERADOR = 9003
 
 
 def canal_motorista(rota_id: int) -> str:
@@ -31,8 +32,18 @@ def canal_recebedor(ligacao_id: int) -> str:
     return f"avisai-recebedor-{ligacao_id}"
 
 
-def llm_url(c, sessao_id: int) -> Optional[str]:
-    if c.settings.llm_mode != "custom":
+def canal_operador(chamada_id: int) -> str:
+    return f"avisai-operador-{chamada_id}"
+
+
+def llm_url(c, sessao_id: int, exigir_auditoria: bool = False) -> Optional[str]:
+    """Retorna o gateway local de LLM para sessões que precisam ser auditáveis.
+
+    O LLM gerenciado pela Agora não envia falas nem tool calls ao backend.
+    Motorista e operador, portanto, sempre passam pelo gateway local para que
+    alertas, decisões e mensagens sejam publicados no SSE da CCO.
+    """
+    if not exigir_auditoria and c.settings.llm_mode != "custom":
         return None
     base = url_publica(c.settings)
     if not base:
@@ -73,7 +84,7 @@ async def _iniciar_motorista(c, rota_id: int) -> SessaoAgente:
         await encerrar(c, sid)
     with sessao() as s:
         sa = SessaoAgente(rota_id=rota_id, papel=Papel.MOTORISTA, canal=canal_motorista(rota_id),
-                          agent_uid=UID_AGENTE_MOTORISTA, user_uid=UID_MOTORISTA, llm_mode=c.settings.llm_mode,
+                          agent_uid=UID_AGENTE_MOTORISTA, user_uid=UID_MOTORISTA, llm_mode="custom",
                           criada_em=c.relogio.agora())
         s.add(sa)
         s.commit()
@@ -85,7 +96,7 @@ async def _iniciar_motorista(c, rota_id: int) -> SessaoAgente:
             nome=agora_payload.nome_unico(f"avisai-motorista-r{rota_id}"),
             canal=sa.canal, token=tokens.token_agente(c.settings, sa.canal, sa.agent_uid),
             agent_uid=sa.agent_uid, remote_uid=sa.user_uid, prompt=prompt, saudacao=saudacao,
-            voice_id=c.settings.tts_voice_id, llm_url=llm_url(c, sa.id), sessao_id=sa.id, idle_timeout=300,
+            voice_id=c.settings.tts_voice_id, llm_url=llm_url(c, sa.id, exigir_auditoria=True), sessao_id=sa.id, idle_timeout=300,
             termos_rota=[r.destino_nome, r.origem_nome, r.recebedor_empresa, r.placa, nome_mot.split()[0]],
         )
         agent_id = await c.agora.join(corpo)
@@ -96,6 +107,46 @@ async def _iniciar_motorista(c, rota_id: int) -> SessaoAgente:
     c.eventos.registrar(TipoEvento.SESSAO_INICIADA, "Agente de voz entrou no canal do motorista", rota_id,
                         sessao_id=sa.id, agent_id=agent_id)
     return sa
+
+
+async def iniciar_operador(c, rota_id: int, chamada_id: int, motivo: str) -> SessaoAgente:
+    """Abre o agente que atende o operador no fallback RTC."""
+    r, nome_mot, _ = consultas.contexto_rota(rota_id)
+    with sessao() as s:
+        sa = SessaoAgente(
+            rota_id=rota_id,
+            papel=Papel.OPERADOR,
+            canal=canal_operador(chamada_id),
+            agent_uid=UID_AGENTE_OPERADOR,
+            user_uid=UID_CCO,
+            llm_mode="custom",
+            criada_em=c.relogio.agora(),
+        )
+        s.add(sa)
+        s.commit()
+        s.refresh(sa)
+    try:
+        prompt, saudacao = prompts.operador(r, nome_mot, motivo)
+        corpo = agora_payload.montar_join(
+            agora_payload.ConfigVoz.de(c.settings),
+            nome=agora_payload.nome_unico(f"avisai-operador-c{chamada_id}"),
+            canal=sa.canal,
+            token=tokens.token_agente(c.settings, sa.canal, sa.agent_uid),
+            agent_uid=sa.agent_uid,
+            remote_uid=sa.user_uid,
+            prompt=prompt,
+            saudacao=saudacao,
+            voice_id=c.settings.tts_voice_id,
+            llm_url=llm_url(c, sa.id, exigir_auditoria=True),
+            sessao_id=sa.id,
+            idle_timeout=max(30, int(c.settings.chamada_operador_timeout_s) + 30),
+            termos_rota=[r.placa, r.destino_nome, nome_mot, "CCO", "operador"],
+        )
+        agent_id = await c.agora.join(corpo)
+    except Exception as error:
+        _atualizar(sa.id, status=StatusSessao.FALHOU, erro=str(error)[:500])
+        raise
+    return _atualizar(sa.id, agent_id=agent_id, status=StatusSessao.ATIVA)
 
 
 def _eh_sip(sa: SessaoAgente) -> bool:

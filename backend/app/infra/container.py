@@ -22,6 +22,7 @@ class Container:
     settings: Settings
     agora: Any  # portas.AgoraGateway
     llm: Any  # portas.LLM
+    twilio: Any = None  # integrações.twilio.TwilioGateway; opcional para testes sem PSTN
     relogio: Any = field(default_factory=RelogioSistema)  # portas.Relogio
     eventos: Eventos = field(default_factory=Eventos)
     tarefas: dict = field(default_factory=dict)

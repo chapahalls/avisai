@@ -4,7 +4,7 @@ from typing import Awaitable, Callable
 
 from ..dominio.enums import Papel
 from ..infra.models import SessaoAgente
-from . import central, ligacoes, reportes, tasks
+from . import chamadas_agente, chamados, central, ligacoes, mensagens, reportes, tasks
 
 Handler = Callable[..., Awaitable[dict]]
 
@@ -28,10 +28,26 @@ async def _chegada(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
 async def _ocorrencia(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
     from ..dominio import ocorrencias as roteiro
 
-    o = tasks.registrar_ocorrencia(c, sa.rota_id, args.get("tipo", "outro"), args.get("descricao") or fala, transcricao=fala)
-    return {"ok": True, "ocorrencia_id": o.id, "faltando": o.faltantes,
-            "pergunte_agora": roteiro.proxima(o.tipo, o.faltantes),
-            "instrucao": "Não encerre no 'registrei': faça as perguntas, uma por vez, e registre cada resposta com detalhar_ocorrencia."}
+    descricao = str(args.get("descricao") or fala).strip()
+    km = args.get("km")
+    try:
+        km = float(km) if km is not None else None
+    except (TypeError, ValueError):
+        km = None
+    if not descricao:
+        return {"ok": False, "erro": "Descrição da ocorrência ausente."}
+    o = tasks.registrar_ocorrencia(
+        c, sa.rota_id, args.get("tipo", "outro"), descricao, transcricao=fala, km=km, rodovia=args.get("rodovia"),
+    )
+    chamado = await chamados.abrir_ocorrencia(c, sa.rota_id, o, transcricao=fala)
+    return {
+        "ok": True,
+        "ocorrencia_id": o.id,
+        "chamado_id": chamado.id,
+        "faltando": o.faltantes,
+        "pergunte_agora": roteiro.proxima(o.tipo, o.faltantes),
+        "instrucao": "Não encerre no 'registrei': faça as perguntas, uma por vez, e registre cada resposta com detalhar_ocorrencia.",
+    }
 
 
 async def _detalhar(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
@@ -83,6 +99,41 @@ async def _responder_central(c, sa: SessaoAgente, args: dict, fala: str) -> dict
     return {"ok": bool(sol), "mensagem": "Resposta enviada à central." if sol else "Não há pergunta da central pendente."}
 
 
+async def _responder_mensagem_motorista(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    mensagem = mensagens.responder(c, sa.rota_id, args.get("resposta") or fala, transcricao=fala)
+    return {
+        "ok": bool(mensagem),
+        "mensagem": "Resposta enviada à CCO." if mensagem else "Não há mensagem pendente da CCO.",
+        "mensagem_id": mensagem.id if mensagem else None,
+    }
+
+
+async def _ligar(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    chamada = await chamadas_agente.ligar(
+        c,
+        sa.rota_id,
+        args.get("destino", "operador"),
+        args.get("motivo") or fala,
+        iniciado_por="llm",
+    )
+    return {
+        "ok": chamada.status in ("twilio_atendida", "agora_tocando", "atendida"),
+        "chamada_id": chamada.id,
+        "status": chamada.status,
+        "twilio_resultado": chamada.twilio_resultado,
+    }
+
+
+async def _falar_motorista(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    mensagem = await mensagens.falar_motorista(
+        c,
+        sa.rota_id,
+        args.get("remetente") or "Operador CCO",
+        args.get("texto") or fala,
+    )
+    return {"ok": mensagem.status != "offline", "mensagem_id": mensagem.id, "status": mensagem.status}
+
+
 REGISTRO: dict[str, Ferramenta] = {
     "confirmar_retirada": Ferramenta(
         Papel.MOTORISTA, "Motorista confirmou por voz a retirada da carga na origem.",
@@ -114,15 +165,29 @@ REGISTRO: dict[str, Ferramenta] = {
         {"type": "object", "properties": {"resposta": {"type": "string", "description": "Resposta fiel e curta."}},
          "required": ["resposta"]},
         _responder_central),
+    "responder_mensagem_motorista": Ferramenta(
+        Papel.MOTORISTA, "Vincula a resposta por voz do motorista à última mensagem falada pela CCO.",
+        {"type": "object", "properties": {"resposta": {"type": "string", "description": "Resposta fiel e curta."}},
+         "required": ["resposta"]},
+        _responder_mensagem_motorista),
+    "ligar": Ferramenta(
+        Papel.MOTORISTA, "Liga para um humano quando o motorista pedir ajuda; usa Twilio e fallback Agora RTC auditáveis.",
+        {"type": "object", "properties": {
+            "destino": {"type": "string", "enum": ["operador", "supervisor", "motorista"]},
+            "motivo": {"type": "string", "description": "Motivo fiel e curto da ligação."}},
+         "required": ["destino", "motivo"]},
+        _ligar),
     "confirmar_chegada": Ferramenta(
         Papel.MOTORISTA, "Motorista confirmou por voz que chegou ao destino (portaria, pátio, recebedor).",
         {"type": "object", "properties": {"observacao": {"type": "string", "description": "O que o motorista disse, resumido."}}},
         _chegada),
     "registrar_ocorrencia": Ferramenta(
-        Papel.MOTORISTA, "Registra problema relatado pelo motorista: fila, doca ocupada, documento, avaria, atraso, recusa, acidente.",
+        Papel.MOTORISTA, "Registra uma ocorrência e abre um chamado para o CCO. Use km e rodovia somente se o motorista informar.",
         {"type": "object", "properties": {
             "tipo": {"type": "string", "enum": ["fila", "doca_ocupada", "documento", "avaria", "atraso", "recusa", "acidente", "outro"]},
-            "descricao": {"type": "string", "description": "Descrição curta e fiel do relato."}},
+            "descricao": {"type": "string", "description": "Descrição curta e fiel do problema."},
+            "km": {"type": "number", "description": "Quilômetro informado pelo motorista."},
+            "rodovia": {"type": "string", "description": "Rodovia, por exemplo BR-381."}},
          "required": ["tipo", "descricao"]},
         _ocorrencia),
     "detalhar_ocorrencia": Ferramenta(
@@ -158,6 +223,13 @@ REGISTRO: dict[str, Ferramenta] = {
             "recebe_hoje": {"type": "boolean", "description": "false se o recebedor disse que não recebe hoje."}},
          "required": ["resumo"]},
         _resposta_recebedor),
+    "falar_motorista": Ferramenta(
+        Papel.OPERADOR, "Envia uma mensagem do operador ao motorista e pede uma resposta por voz.",
+        {"type": "object", "properties": {
+            "remetente": {"type": "string", "description": "Nome do operador ou remetente."},
+            "texto": {"type": "string", "description": "Mensagem curta para o motorista."}},
+         "required": ["texto"]},
+        _falar_motorista),
 }
 
 

@@ -115,6 +115,13 @@ def test_confirma_retirada_na_origem():
     assert d.ferramenta == "confirmar_retirada" and "caminhão" in d.texto
 
 
+def test_iniciar_viagem_confirma_retirada_sem_pedir_localizacao():
+    planejada = Estado(nome="Carlos", destino="Mercadão Campinas", status_rota="planejada")
+    d = ct.decidir("motorista", "quero iniciar a viagem", planejada)
+    assert d.ferramenta == "confirmar_retirada"
+    assert "km" not in d.texto.lower() and "br" not in d.texto.lower()
+
+
 def test_relatorio_inicial_extrai_campos():
     d = ct.decidir("motorista", "caminhão tá tudo certo, peguei 28 paletes", INICIAL)
     assert d.ferramenta == "registrar_relatorio_inicial"

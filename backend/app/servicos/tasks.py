@@ -9,7 +9,7 @@ from ..dominio import escalonamento
 from ..dominio.enums import StatusRota, StatusTask, TipoEvento, TipoGeo
 from ..infra.db import sessao
 from ..infra.models import Estadia, EventoGeo, Ocorrencia, RegraEscalonamento, Rota, TaskCCO
-from . import consultas, ligacoes
+from . import chamados, consultas, ligacoes
 from .sessoes import VozAgora
 
 log = logging.getLogger("avisai.tasks")
@@ -43,18 +43,28 @@ async def on_chegada(c, rota_id: int, origem: str = "gps", transcricao: Optional
             s.add(r)
         if t:
             s.commit()
-            if origem == "voz":
-                c.eventos.registrar(TipoEvento.CHEGADA_CONFIRMADA_VOZ, "Motorista confirmou a chegada por voz", rota_id,
-                                    transcricao=transcricao)
-            return t
-        t = TaskCCO(rota_id=rota_id, tipo="chegada", status=StatusTask.PENDENTE, criada_em=agora)
-        e = Estadia(rota_id=rota_id, inicio=agora, capacidade_t=r.capacidade_t or r.carga_t,
-                    franquia_h=c.settings.estadia_franquia_h, valor_t_h=c.settings.estadia_valor_t_h)
-        s.add(t)
-        s.add(e)
-        s.commit()
-        s.refresh(t)
-        s.refresh(e)
+            existente = t
+        else:
+            existente = None
+            t = TaskCCO(rota_id=rota_id, tipo="chegada", status=StatusTask.PENDENTE, criada_em=agora)
+            e = Estadia(
+                rota_id=rota_id,
+                inicio=agora,
+                capacidade_t=r.capacidade_t or r.carga_t,
+                franquia_h=c.settings.estadia_franquia_h,
+                valor_t_h=c.settings.estadia_valor_t_h,
+            )
+            s.add(t)
+            s.add(e)
+            s.commit()
+            s.refresh(t)
+            s.refresh(e)
+    if existente:
+        if origem == "voz":
+            c.eventos.registrar(TipoEvento.CHEGADA_CONFIRMADA_VOZ, "Motorista confirmou a chegada por voz", rota_id,
+                                transcricao=transcricao)
+        await chamados.abrir_chegada(c, rota_id, existente.id)
+        return existente
     c.eventos.registrar(TipoEvento.TASK_CRIADA, f"Task de chegada criada para o CCO (rota {rota_id}).", rota_id,
                         task_id=t.id, prioridade=t.prioridade)
     c.eventos.registrar(
@@ -66,6 +76,7 @@ async def on_chegada(c, rota_id: int, origem: str = "gps", transcricao: Optional
     from . import reportes
 
     reportes.iniciar(c, rota_id, "checkin")  # o agente vai pedir o check-in (só o que faltar)
+    await chamados.abrir_chegada(c, rota_id, t.id)
     if origem == "gps":  # dupla prova: o GPS detectou; a voz confirma
         await VozAgora(c).falar_motorista(
             rota_id, f"Parece que você chegou em {r.destino_nome}. Confirma a chegada? Já avisei o CCO e o contador "
@@ -210,16 +221,27 @@ async def confirmar_descarga(c, rota_id: int, por: str = "motorista", transcrica
     return x
 
 
-def registrar_ocorrencia(c, rota_id: int, tipo: str, descricao: str, transcricao: Optional[str] = None) -> Ocorrencia:
+def registrar_ocorrencia(
+    c,
+    rota_id: int,
+    tipo: str,
+    descricao: str,
+    transcricao: Optional[str] = None,
+    km: Optional[float] = None,
+    rodovia: Optional[str] = None,
+) -> Ocorrencia:
     with sessao() as s:
         r = s.get(Rota, rota_id)
+        if not r:
+            raise consultas.NaoEncontrado("Rota não encontrada")
         from ..dominio import ocorrencias as roteiro
 
         # fecha ocorrências antigas ainda abertas (o motorista mudou de assunto)
         for antiga in s.exec(select(Ocorrencia).where(Ocorrencia.rota_id == rota_id, Ocorrencia.completa == False)).all():  # noqa: E712
             antiga.completa = True
             s.add(antiga)
-        o = Ocorrencia(rota_id=rota_id, tipo=tipo, descricao=descricao, lat=r.ultima_lat, lng=r.ultima_lng,
+        o = Ocorrencia(rota_id=rota_id, tipo=tipo, descricao=descricao, km=km, rodovia=rodovia,
+                       lat=r.ultima_lat, lng=r.ultima_lng,
                        transcricao=transcricao, timestamp=c.relogio.agora(), faltantes=roteiro.campos(tipo))
         s.add(o)
         s.commit()

@@ -20,7 +20,7 @@ from ..infra.db import sessao
 from ..infra.eventos import serial
 from ..infra.models import Evento, SessaoAgente
 from ..integracoes import tokens
-from ..servicos import consultas, ligacoes, metricas, publicacao, reportes, sessoes, tasks, usuarios
+from ..servicos import chamados, consultas, ligacoes, metricas, publicacao, reportes, sessoes, tasks, usuarios
 from .deps import c, erro_http
 from .schemas import DomainEventIn, SsoOut
 
@@ -46,6 +46,17 @@ TIPO_DOMINIO = {
     "pergunta_documento": "DocumentQuestionAnswered",
     "ocorrencia_detalhada": "OccurrenceDetailed",
     "ocorrencia_grave": "OccurrenceCritical",
+    "alerta_motorista": "DriverAlert",
+    "decisao_agente": "AgentDecision",
+    "mensagem_motorista_enviada": "DriverMessageSent",
+    "mensagem_motorista_falada": "DriverMessageSpoken",
+    "mensagem_motorista_respondida": "DriverMessageAnswered",
+    "motorista_offline": "DriverOffline",
+    "chamada_twilio_falhou": "TwilioCallFailed",
+    "chamada_agora_iniciada": "AgoraFallbackStarted",
+    "chamada_agora_atendida": "AgoraFallbackAnswered",
+    "chamada_sem_resposta": "AgentCallNoAnswer",
+    "escalada_supervisor": "SupervisorEscalated",
     "arquivo_adicionado": "TripFileAdded",
     "rota_publicada": "RoutePublished",
     # extensões (fora da lista do doc)
@@ -58,6 +69,10 @@ TIPO_DOMINIO = {
     "nao_recebe_hoje": "ReceiverRefusedToday",
     "pedido_central": "CentralRequestSent",
     "resposta_central": "CentralRequestAnswered",
+    "chamado_cco_aberto": "DriverRequestOpened",
+    "chamado_cco_lembrete": "DriverRequestReminder",
+    "chamado_cco_respondido": "DriverRequestAnswered",
+    "chamado_cco_timeout": "DriverRequestTimeout",
     "divergencia_gps": "GpsDivergence",
     "fala_motorista": "VoiceTranscript",
     "fala_recebedor": "VoiceTranscript",
@@ -170,7 +185,11 @@ async def _aplicar(ct, rid: int, e: DomainEventIn) -> None:
     elif e.type == "PickupConfirmed":
         await tasks.confirmar_retirada(ct, rid, transcricao=p.get("transcricao"), origem="app")
     elif e.type == "OccurrenceCreated":
-        tasks.registrar_ocorrencia(ct, rid, p.get("tipo", "outro"), p.get("descricao", ""), transcricao=p.get("transcricao"))
+        occurrence = tasks.registrar_ocorrencia(
+            ct, rid, p.get("tipo", "outro"), p.get("descricao", ""), transcricao=p.get("transcricao"),
+            km=p.get("km"), rodovia=p.get("rodovia"),
+        )
+        await chamados.abrir_ocorrencia(ct, rid, occurrence, transcricao=p.get("transcricao"))
     elif e.type == "UnloadConfirmed":
         await tasks.confirmar_descarga(ct, rid, por="motorista (app)", transcricao=p.get("transcricao"))
     elif e.type == "ReportSubmitted":

@@ -50,6 +50,16 @@ class NovaSolicitacao(BaseModel):
     pergunta: str
 
 
+class NovaMensagemMotorista(BaseModel):
+    remetente: str = Field(min_length=1, max_length=255)
+    texto: str = Field(min_length=1, max_length=2000)
+
+
+class ResponderChamado(BaseModel):
+    resposta: str = Field(min_length=1, max_length=2000)
+    respondido_por: str = "CCO"
+
+
 class PosicaoOut(BaseModel):
     rota_id: int
     distancia_m: float
@@ -68,6 +78,11 @@ class Descarga(BaseModel):
 
 class Ligar(BaseModel):
     motivo: str = "cco_sem_resposta"
+
+
+class LigarAgente(BaseModel):
+    destino: Literal["operador", "supervisor", "motorista"] = "operador"
+    motivo: str = Field(min_length=1, max_length=1000)
 
 
 class EventoStream(BaseModel):

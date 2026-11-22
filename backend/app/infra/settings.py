@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     agora_sip_from_number: str = Field("", validation_alias=AliasChoices("AGORA_SIP_FROM_NUMBER", "SIP_FROM_NUMBER", "agora_sip_from_number"))
     recebedor_telefone_e164: str = "+5519900000002"
 
+    # Telefonia do agente: Twilio é a primeira tentativa; Agora RTC atende no navegador do operador.
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""
+    twilio_operator_phone_e164: str = ""
+    twilio_supervisor_phone_e164: str = ""
+    chamada_operador_timeout_s: float = 30
+
     # LLM: custom = Agora chama o nosso /v1/chat/completions; agora = LLM gerenciado
     llm_mode: str = "custom"
     llm_api_key: str = ""
@@ -67,6 +75,8 @@ class Settings(BaseSettings):
     # Ritmo da demo
     cco_intervalo_s: float = 20
     cco_max_tentativas: int = 3
+    chamado_cco_intervalo_s: float = 30
+    chamado_cco_max_tentativas: int = 5
     estadia_aceleracao: float = 1
     estadia_valor_t_h: float = 2.50
     estadia_franquia_h: float = 5
@@ -80,3 +90,6 @@ class Settings(BaseSettings):
 
     def agora_configurada(self) -> bool:
         return bool(self.agora_app_id and self.agora_app_certificate)
+
+    def twilio_configurada(self) -> bool:
+        return bool(self.twilio_account_sid and self.twilio_auth_token and self.twilio_from_number)

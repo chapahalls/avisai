@@ -85,15 +85,15 @@ class Eventos:
             except asyncio.QueueFull:
                 pass
 
-    def registrar(self, tipo: TipoEvento, mensagem: str, rota_id: Optional[int] = None, **dados: Any) -> Evento:
+    def registrar(self, event_type: TipoEvento, mensagem: str, rota_id: Optional[int] = None, **dados: Any) -> Evento:
         fonte = dados.pop("_fonte", "system")
         dados_json = json.loads(dumps(dados))
         with sessao() as s:
-            ev = Evento(rota_id=rota_id, tipo=str(tipo), mensagem=mensagem, dados=dados_json, source=fonte)
+            ev = Evento(rota_id=rota_id, tipo=str(event_type), mensagem=mensagem, dados=dados_json, source=fonte)
             s.add(ev)
             s.commit()
             s.refresh(ev)
-        log.info("[%s] rota=%s %s", tipo, rota_id, mensagem)
+        log.info("[%s] rota=%s %s", event_type, rota_id, mensagem)
         self.publicar("evento", envelope(ev), rota_id, dados.get("motorista_id"))
         return ev
 

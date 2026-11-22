@@ -107,6 +107,8 @@ class Ocorrencia(SQLModel, table=True):
     rota_id: int = Field(foreign_key="rota.id")
     tipo: str
     descricao: str
+    km: Optional[float] = None
+    rodovia: Optional[str] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
     timestamp: datetime = Field(default_factory=agora)
@@ -114,6 +116,28 @@ class Ocorrencia(SQLModel, table=True):
     detalhes: dict = Field(default_factory=dict, sa_column=Column(JSON))  # respostas do aprofundamento
     faltantes: list = Field(default_factory=list, sa_column=Column(JSON))  # perguntas ainda não respondidas
     completa: bool = False
+
+
+class ChamadoCCO(SQLModel, table=True):
+    """Pedido aberto pelo motorista para o CCO, com resposta falada pelo agente."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    rota_id: int = Field(foreign_key="rota.id", index=True)
+    tipo: str  # ocorrencia | chegada
+    assunto: str
+    descricao: str
+    km: Optional[float] = None
+    rodovia: Optional[str] = None
+    ocorrencia_id: Optional[int] = Field(default=None, foreign_key="ocorrencia.id")
+    status: str = "aguardando_cco"  # coletando | aguardando_cco | respondido | timeout
+    tentativas: int = 0
+    max_tentativas: int = 5
+    intervalo_s: float = 30
+    criada_em: datetime = Field(default_factory=agora)
+    ultima_notificacao: Optional[datetime] = None
+    respondida_em: Optional[datetime] = None
+    resposta: Optional[str] = None
+    respondido_por: Optional[str] = None
+    transcricao: Optional[str] = None
 
 
 class EventoGeo(SQLModel, table=True):
@@ -238,3 +262,36 @@ class SolicitacaoCentral(SQLModel, table=True):
     criada_em: datetime = Field(default_factory=agora)
     respondida_em: Optional[datetime] = None
     transcricao: Optional[str] = None
+
+
+class MensagemMotorista(SQLModel, table=True):
+    """Mensagem da CCO que o agente fala e cuja resposta mantém o vínculo original."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    rota_id: int = Field(foreign_key="rota.id", index=True)
+    remetente: str
+    texto: str
+    # enviada | falada | respondida | offline
+    status: str = "enviada"
+    criada_em: datetime = Field(default_factory=agora)
+    falada_em: Optional[datetime] = None
+    respondida_em: Optional[datetime] = None
+    resposta: Optional[str] = None
+    transcricao_resposta: Optional[str] = None
+
+
+class ChamadaAgente(SQLModel, table=True):
+    """Cascata de chamada do agente: Twilio, RTC do operador e escalonamento."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    rota_id: int = Field(foreign_key="rota.id", index=True)
+    destino: str  # operador | supervisor | motorista
+    motivo: str
+    # iniciada | twilio_atendida | agora_tocando | atendida | sem_resposta | escalada | falhou
+    status: str = "iniciada"
+    twilio_sid: Optional[str] = None
+    twilio_resultado: Optional[str] = None
+    agora_canal: Optional[str] = None
+    sessao_id: Optional[int] = Field(default=None, foreign_key="sessaoagente.id")
+    iniciada_em: datetime = Field(default_factory=agora)
+    atendida_em: Optional[datetime] = None
+    encerrada_em: Optional[datetime] = None
+    erro: Optional[str] = None

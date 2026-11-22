@@ -10,7 +10,7 @@ from ..dominio import contingencia, prompts
 from ..dominio.enums import Papel, TipoEvento
 from ..infra.db import sessao
 from ..infra.models import Evento, LigacaoRecebedor, SessaoAgente
-from . import central, consultas, ferramentas, reportes
+from . import alertas, central, consultas, ferramentas, mensagens, reportes
 
 log = logging.getLogger("avisai.conversa")
 MAX_PASSADAS = 4
@@ -90,6 +90,12 @@ def pendencias(rota_id: int) -> list[str]:
     sol = central.pendente(rota_id)
     if sol:
         out.append(f"Pergunta da central aguardando resposta do motorista: '{sol.pergunta}' (use responder_central).")
+    mensagem = mensagens.pendente(rota_id)
+    if mensagem:
+        out.append(
+            f"Mensagem da CCO aguardando resposta, enviada por {mensagem.remetente}: "
+            f"'{mensagem.texto}' (use responder_mensagem_motorista)."
+        )
     return out
 
 
@@ -157,8 +163,13 @@ async def responder(c, sa: SessaoAgente, msgs_in: list[dict]) -> AsyncIterator[s
     """Gera o texto da resposta em pedaços (para o SSE começar antes do fim)."""
     fala = ultima_fala(msgs_in)
     if fala:
-        tipo = TipoEvento.FALA_RECEBEDOR if sa.papel == Papel.RECEBEDOR else TipoEvento.FALA_MOTORISTA
-        c.eventos.registrar(tipo, fala, sa.rota_id, sessao_id=sa.id)
+        if sa.papel == Papel.RECEBEDOR:
+            c.eventos.registrar(TipoEvento.FALA_RECEBEDOR, fala, sa.rota_id, sessao_id=sa.id)
+        elif sa.papel == Papel.MOTORISTA:
+            c.eventos.registrar(TipoEvento.FALA_MOTORISTA, fala, sa.rota_id, sessao_id=sa.id, _fonte="driver")
+            alertas.registrar(c, sa.rota_id, fala)
+        else:
+            c.eventos.registrar(TipoEvento.FALA_AGENTE, fala, sa.rota_id, sessao_id=sa.id, _fonte="cco")
         _transcrever(sa, "recebedor", fala)
 
     dito: list[str] = []

@@ -137,6 +137,21 @@ def _motorista(fala: str, t: str, e: Estado) -> Decisao:
     pergunta = _tem(t, *PERGUNTA)
     from . import documentos  # import local: documentos usa normalizar() deste módulo
 
+    if not pergunta and _tem(
+        t,
+        r"\b(inici|comec|sair|partir)\w*(?:\s+a)?\s+(?:viagem|rota)\b",
+        r"\bquero\s+(?:viajar|sair)\b",
+    ):
+        if e.status_rota in ("planejada", "na_origem"):
+            return Decisao(
+                "Certo, vou registrar a retirada e iniciar a viagem.",
+                "confirmar_retirada",
+                {"observacao": fala},
+            )
+        if e.status_rota in ("em_transito", "aproximando"):
+            return Decisao("A viagem já está em andamento.")
+        return Decisao("Essa viagem já foi concluída. O CCO precisa atribuir uma nova rota antes de iniciar outra.")
+
     if documentos.eh_pergunta(fala) and (pergunta or _tem(t, r"me (fala|diz|passa)")):
         return Decisao("", "consultar_documento", {"pergunta": fala})  # texto = resposta do documento
     if e.retirada_pendente and _tem(t, r"\bconfirm", r"^\s*sim\b", r"\bpeguei\b", r"\bcarreguei\b", r"\bretirei\b", r"\bcarregado\b"):

@@ -4,7 +4,7 @@ import json
 from sqlmodel import select
 
 from app.infra.db import sessao
-from app.infra.models import Estadia, EventoGeo, LigacaoRecebedor, Ocorrencia, TaskCCO
+from app.infra.models import ChamadoCCO, Estadia, EventoGeo, LigacaoRecebedor, Ocorrencia, TaskCCO
 from app.servicos import ligacoes
 from tests.fakes import tool_call
 from tests.helpers import eventos, obter
@@ -59,11 +59,31 @@ async def test_cheguei_na_portaria_vira_chegada_validada(client, fake_llm):
 
 async def test_fila_vira_ocorrencia(client, fake_llm):
     sid = await _sessao(client)
-    fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"fila","descricao":"fila de 3 caminhões"}'), "Registrei."]
+    fake_llm.respostas = [tool_call(
+        "registrar_ocorrencia",
+        '{"tipo":"fila","descricao":"fila de 3 caminhões","km":230,"rodovia":"BR-381"}',
+    ), "Registrei."]
     await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Tem fila de três caminhões"), headers=AUTH)
     with sessao() as s:
         o = s.exec(select(Ocorrencia)).one()
+        chamado = s.exec(select(ChamadoCCO)).one()
     assert o.tipo == "fila" and o.transcricao == "Tem fila de três caminhões"
+    assert o.km == 230 and o.rodovia == "BR-381"
+    assert chamado.status == "aguardando_cco" and chamado.ocorrencia_id == o.id
+
+
+async def test_ocorrencia_sem_km_ou_br_abre_chamado(client, fake_llm):
+    sid = await _sessao(client)
+    fake_llm.respostas = [
+        tool_call("registrar_ocorrencia", '{"tipo":"avaria","descricao":"Meu pneu furou"}'),
+        "Registrei a avaria e avisei o CCO.",
+    ]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Meu pneu furou"), headers=AUTH)
+    with sessao() as s:
+        o = s.exec(select(Ocorrencia)).one()
+        chamado = s.exec(select(ChamadoCCO)).one()
+    assert o.tipo == "avaria" and o.km is None and o.rodovia is None
+    assert chamado.status == "aguardando_cco" and chamado.km is None and chamado.rodovia is None
 
 
 async def test_descarreguei_encerra_estadia_e_task(client, fake_llm):
@@ -104,6 +124,8 @@ async def test_estado_vivo_vai_para_o_llm_sem_campos_da_agora(client, fake_llm):
     assert {f["function"]["name"] for f in fake_llm.recebidas[-1]["ferramentas"]} >= {
         "confirmar_chegada", "registrar_ocorrencia", "confirmar_descarga", "confirmar_retirada",
         "registrar_relatorio_inicial", "registrar_checkin", "responder_central"}
+    ocorrencia = next(f for f in fake_llm.recebidas[-1]["ferramentas"] if f["function"]["name"] == "registrar_ocorrencia")
+    assert ocorrencia["function"]["parameters"]["required"] == ["tipo", "descricao"]
 
 
 async def test_texto_sai_em_varios_chunks(client, fake_llm):

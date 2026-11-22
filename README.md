@@ -20,6 +20,20 @@ Time Chapahalls (3 pessoas: Jeferson, Henry e Lucas) · hackathon UNMUTE by Agor
 
 Toda a voz roda na **Agora Conversational AI**. O áudio vai do aparelho direto para a nuvem da Agora; este backend é o plano de controle: tokens, `/join`, `/leave`, `/speak` e `/call`, o LLM próprio com ferramentas e as regras de negócio.
 
+## Propósito, fronteiras e estado atual
+
+O backend coordena a operação que começa na viagem atribuída e termina na descarga: recebe posições, detecta aproximação/chegada, cria Tasks, calcula estadia, registra chamadas, persiste mensagens/chamados e entrega atualizações aos dois frontends. Ele é adequado para demonstrar esse fluxo com dados fictícios e contratos integráveis, mas não deve ser tratado como uma plataforma pronta para operação real.
+
+| Área | Implementado no repositório | Limite atual |
+|---|---|---|
+| Operação | rotas, geocerca, Tasks, escalonamento, estadia, ocorrências, pedidos e timeline | seed, GPS e documentos de demonstração |
+| Tempo real | SSE do CCO e WebSocket para rota/motorista | sem replay/cursor garantido; clientes precisam reconciliar por REST |
+| Voz e chamadas | controle de sessão Agora, LLM com ferramentas, contingência local, cascata Twilio → Agora RTC | PSTN/RTC reais exigem credenciais, URL pública e permissões externas |
+| Arquivos | metadados no Postgres e binários em `ARQUIVOS_DIR` | não há autenticação/autorização ou versionamento de arquivos |
+| Identidade | perfis persistidos e token SSO MOCK | token não protege endpoints; CORS está amplo para a demonstração |
+
+Os frontends devem conservar essa distinção. Não use um campo ausente da API para gerar GPS, valor de estadia, documento, evento ou sucesso de telefonia no cliente.
+
 ---
 
 ## Dependências
@@ -73,14 +87,17 @@ Para refazer: `POST /rotas/1/reset`, ou o botão "Reset da demo" na `/teste`.
 
 ```
 backend/app/
-  dominio/       regras puras: estadia, geocerca, escalonamento, prompts, payload da Agora, enums
-  servicos/      casos de uso: sessoes, rotas, tasks, ligacoes, conversa, ferramentas
+  dominio/       regras puras: estadia, geocerca, escalonamento, prompts, contingência, documentos e enums
+  servicos/      casos de uso: sessões, rotas, Tasks, chamadas, alertas, mensagens, chamados, conversa e ferramentas
   portas.py      contratos (typing.Protocol): AgoraGateway, LLM, Relogio, Voz, Discador
-  integracoes/   adaptadores reais: agora_rest, openai_llm, tokens, tunel
-  api/           routers FastAPI + schemas Pydantic (contrato com o front)
-  infra/         settings, db (Postgres/SQLModel), models, eventos (pub/sub), container
+  integracoes/   adaptadores reais: Agora REST, Twilio, OpenAI, tokens e túnel
+  api/           routers FastAPI + schemas Pydantic; cada módulo agrupa uma superfície HTTP/WS
+  infra/         settings, banco (Postgres/SQLModel), modelos, eventos (pub/sub), container e limite de upload
 backend/alembic/ migrações
 backend/tests/   cenários dado/quando/então: dominio, servicos, integracoes, api
+backend/docs/    perfis de demonstração e contrato de arquivos
+backend/static/  páginas mínimas de motorista e recebedor para testar RTC
+clients/         contratos TypeScript e clientes de referência React Native/web
 scripts/simular_rota.py   GPS simulado
 ```
 
@@ -104,7 +121,9 @@ Os fronts podem seguir o contrato do doc sem mudança. A api também responde na
 | `GET /api/route?tripId` | rota do dia: polyline, origem, destino, recebedor, placa, NF, canal e uids |
 | `GET /api/receivers` | ranking de recebedores: espera média, ligações atendidas, estadia devida, avisados antes da chegada |
 | `GET /api/metrics` | KPIs da seção 6.2: horas paradas, estadia devida, tempo até ação do CCO, tasks escaladas, % avisados, % atendidas, % reportes completos na 1ª, latência do LLM |
-| `GET /api/documents` | NF-e e CT-e fictícios (mock) |
+| `GET /api/documents` | NF-e e CT-e da rota; a consulta por voz também lista os nomes disponíveis |
+| `GET /cco/chamados?abertos=true` | chamados do motorista aguardando resposta do CCO |
+| `POST /cco/chamados/{id}/responder` | resposta do CCO; o agente fala a resposta ao motorista |
 | `POST /auth/sso` | SSO mock (token fake; papel `cco` se o e-mail tiver "cco") |
 
 Os `type` do contrato saem dos nossos eventos: `retirada`→`PickupConfirmed`, `relatorio`→`ReportSubmitted`, `campo_faltante`→`ReportFieldMissing`, `ocorrencia`→`OccurrenceCreated`, `aproximacao`→`ApproachDetected`, `aviso_recebedor`→`ReceiverNotified`, `resposta_recebedor`/`ligacao_nao_atendida`→`ReceiverCallResult` (`payload.answered`), `chegada`→`ArrivalRegistered`, `task_criada`→`TaskCreated`, `notificacao_cco`/`escalada_recebedor`→`TaskEscalated`, `task_confirmada`→`TaskAcknowledged`, `descarga`→`UnloadConfirmed`.
@@ -130,11 +149,13 @@ As variáveis do doc também valem: `AGORA_REST_KEY` e `AGORA_REST_SECRET` (equi
    - **não recebe hoje**: aplica a regra da transportadora (`RegraEscalonamento.acao_nao_recebe`) e avisa o CCO e o motorista;
    - não atende: a tentativa fica como prova.
 3. **Chegada:** o GPS detecta e o agente pergunta **"Confirma a chegada?"**. A prova (`EventoGeo`) só fica validada com GPS do celular + rastreador + voz. Abre a Task (`TaskCreated`) e a estadia, e o **check-in por voz** com campos obrigatórios (estado da carga, tempo de viagem, problemas). O agente pergunta **só o que faltou** (`ReportFieldMissing`).
-4. **CCO:** 3 tentativas, e sem resposta o agente liga para o recebedor (já existia).
-5. **Pedido da central:** `POST /rotas/{id}/solicitacoes {pergunta}`. O agente pergunta ao motorista e a resposta volta estruturada (`GET /rotas/{id}/solicitacoes`).
-8. **Ocorrência aprofundada:** depois de registrar, o agente faz as perguntas do tipo, **uma por vez**. Em acidente: feridos, envolvimento do caminhão, se dá pra seguir e local; em avaria: o que houve, se precisa de socorro e a carga; em fila: quantos caminhões e previsão. Acidente com ferido leva o agente a orientar ligar **192 (SAMU) ou 193 (Bombeiros)** e gera `ocorrencia_grave` (prioridade crítica) para o CCO. O quadro completo sai em `ocorrencia_detalhada` (`OccurrenceDetailed`). Funciona com o LLM (ferramenta `detalhar_ocorrencia`) e na contingência.
-7. **Pergunta sobre a NF ou o CT-e por voz:** a ferramenta `consultar_documento` responde com o número, peso, valor, destinatário, itens, frete, placa ou chave ("Pela NF-e 000.482.913, o peso é 28.000 kg"). A resposta sai só dos campos do documento, cita qual documento usou e diz "não encontrei" quando o campo não existe; nunca arredonda. O evento é `pergunta_documento`, que aparece como `DocumentQuestionAnswered` no `/events`. Funciona também sem LLM, pela contingência. Os documentos são fictícios.
-6. **Dupla prova de GPS:** `POST /rotas/{id}/posicao` com `fonte=rastreador` registra o GPS do caminhão. Na retirada e na chegada, se celular e rastreador estiverem a mais de 500 m, o evento fica `nao_validado` e sai `divergencia_gps` para o CCO. O simulador manda os dois GPS (`--divergir` força a divergência).
+4. **Chegada e chamado direto ao CCO:** além da Task operacional, a chegada abre um chamado persistido `chegada`. O painel lista o chamado e pode responder; o agente entrega a resposta ao motorista. Sem resposta, fala um lembrete a cada 30 s, até 5 tentativas, e então registra `timeout`.
+5. **CCO:** a Task segue o escalonamento configurado; sem resposta, o agente liga para o recebedor.
+6. **Pedido da central:** `POST /rotas/{id}/solicitacoes {pergunta}`. O agente pergunta ao motorista e a resposta volta estruturada (`GET /rotas/{id}/solicitacoes`).
+7. **Ocorrência por voz:** ao ouvir um problema, o agente persiste a `Ocorrencia` e abre imediatamente um chamado `ocorrencia` ao CCO. Km e BR são opcionais: entram apenas quando o motorista os informar. O chamado fica no banco e no stream, com os mesmos lembretes de 30 s/5 tentativas.
+8. **Ocorrência aprofundada:** depois do registro, o agente faz as perguntas do tipo, **uma por vez**. Em acidente: feridos, envolvimento do caminhão, se dá para seguir e local; em avaria: o que houve, se precisa de socorro e a carga; em fila: quantos caminhões e previsão. Acidente com ferido leva o agente a orientar ligar **192 (SAMU) ou 193 (Bombeiros)** e gera `ocorrencia_grave` (prioridade crítica) para o CCO. O quadro completo sai em `ocorrencia_detalhada` (`OccurrenceDetailed`). Funciona com o LLM (ferramenta `detalhar_ocorrencia`) e na contingência.
+9. **Pergunta sobre a NF ou o CT-e por voz:** a ferramenta `consultar_documento` responde com o nome do documento e os campos disponíveis (número, peso, valor, destinatário, itens, frete, placa ou chave). Se o motorista pedir a lista, informa os títulos; sem campo, diz "não encontrei". A resposta sai só dos campos extraídos e nunca arredonda. O evento é `pergunta_documento`, que aparece como `DocumentQuestionAnswered` no `/events`. Funciona também sem LLM. Anexos reais da rota ficam em `/rotas/{id}/arquivos`.
+10. **Dupla prova de GPS:** `POST /rotas/{id}/posicao` com `fonte=rastreador` registra o GPS do caminhão. Na retirada e na chegada, se celular e rastreador estiverem a mais de 500 m, o evento fica `nao_validado` e sai `divergencia_gps` para o CCO. O simulador manda os dois GPS (`--divergir` força a divergência).
 
 ## Integração com os fronts
 
@@ -207,30 +228,61 @@ Tipos TypeScript: `npx openapi-typescript {API}/openapi.json -o src/api.ts`.
 
 ## Contrato de API
 
+Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi.json`. As tabelas abaixo resumem as rotas públicas; campos, códigos de erro e schemas devem ser conferidos no OpenAPI da instância em uso.
+
+### Infraestrutura, identidade e voz
+
 | Método | Caminho | Corpo | O que faz |
 |---|---|---|---|
-| GET | `/health` | — | estado da config e URL pública |
-| GET | `/token?channel=&uid=` | — | `{app_id, channel, uid, token}` RTC+RTM (24 h) |
-| POST | `/sessions` | `{rota_id}` | inicia o agente no canal do motorista e devolve `SessaoOut` com o token do motorista |
-| GET | `/sessions` | — | últimas sessões |
-| DELETE | `/sessions/{id}` | — | `/leave` do agente |
-| POST | `/sessions/{id}/speak` | `{texto, prioridade?}` | fala manual (teste) |
-| GET | `/rotas`, `/rotas/{id}` | — | rotas (com `trajeto`, canal e uids) |
-| POST | `/rotas/{id}/posicao` | `{lat, lng, velocidade_kmh?, precisao_m?}` | GPS; devolve `{distancia_m, eta_min, status, disparos[]}` |
-| POST | `/rotas/{id}/chegada` | — | chegada manual (idempotente) |
-| POST | `/rotas/{id}/descarga` | `{por?}` | encerra estadia e Task |
-| POST | `/rotas/{id}/ligar-recebedor` | `{motivo?}` | liga para o recebedor na hora |
-| POST | `/rotas/{id}/reset` | — | reinicia a demo da rota |
-| GET | `/tasks` | — | Tasks do CCO |
-| POST | `/tasks/{id}/confirmar` | `{confirmado_por}` | CCO assume e o escalonamento para |
-| GET | `/ligacoes`, `/ligacoes/{id}` | — | ligações (com token do recebedor) |
-| GET | `/ligacoes/atual/recebedor` | — | ligação em andamento, ou `{ligacao: null}` |
-| GET | `/cco/estado?rota_id=` | — | snapshot: rotas, tasks, estadias, ligações, ocorrências, eventos |
-| GET | `/cco/stream?rota_id=` | — | **SSE** |
-| WS | `/ws?rota_id=` | — | **WebSocket**: `{canal, dado}` com as mesmas mensagens do SSE |
-| GET | `/eventos?rota_id=&limite=` | — | linha do tempo (`EventoStream`) |
-| POST | `/v1/chat/completions` | OpenAI | **LLM próprio**, chamado pela Agora; não é para o front |
-| GET | `/teste`, `/recebedor` | — | páginas de teste do motorista e do recebedor (plano B) |
+| GET | `/health` | — | estado da configuração, túnel, Agora, Twilio e LLM |
+| GET | `/usuarios?role=driver\|cco`<br>`/api/users` | — | perfis persistidos de demonstração |
+| POST | `/auth/sso` | `{email}` | login MOCK; devolve perfil e token não autorizador |
+| GET | `/token?channel=&uid=` | — | token RTC+RTM de 24 h |
+| POST | `/sessions` | `{rota_id}` | inicia o agente da viagem e devolve o token do motorista |
+| GET / DELETE / POST | `/sessions`<br>`/sessions/{id}`<br>`/sessions/{id}/speak` | — / — / `{texto, prioridade?}` | lista, encerra ou pede uma fala manual para teste |
+| POST | `/v1/chat/completions` | OpenAI compatível | gateway interno do LLM chamado pela Agora; não é endpoint de frontend |
+
+### Rotas, motoristas, arquivos e comunicação
+
+| Método | Caminho | Corpo | O que faz |
+|---|---|---|---|
+| GET / POST | `/rotas` | — / `NovaRota` | lista ou publica rota; `motorista_id` é opcional por compatibilidade, embora o painel CCO exija um motorista cadastrado |
+| GET | `/rotas/{id}` | — | detalhe, trajetória, posições, canal e UIDs |
+| POST | `/rotas/{id}/atribuir` | `{motorista_id}` | atribui/reatribui e emite `rota_atribuida` |
+| POST | `/rotas/{id}/posicao` | GPS do celular ou rastreador | atualiza posição, geocerca e status |
+| POST | `/rotas/{id}/chegada`<br>`/descarga`<br>`/reset` | — / `{por?}` / — | registra chegada, encerra descarga ou reinicia a rota de demonstração |
+| GET / POST | `/rotas/{id}/solicitacoes` | — / `{pergunta}` | pedidos do CCO e resposta capturada pelo agente |
+| GET / POST | `/rotas/{id}/mensagens` | — / `{texto}` | thread CCO → motorista e tentativa de fala do agente |
+| GET | `/rotas/{id}/chamados` | — | chamados de chegada/ocorrência ligados à rota |
+| GET / POST | `/rotas/{id}/arquivos` | — / multipart `arquivo` | lista ou envia anexo real |
+| GET | `/rotas/{id}/arquivos/{arquivo_id}/download` | — | baixa o conteúdo binário do anexo |
+| GET / POST | `/motoristas` | — / cadastro de motorista | lista ou cadastra o vínculo operacional |
+| GET | `/motoristas/{id}/rota-atual` | — | alternativa snake_case para a rota atual |
+
+### CCO, eventos e chamadas
+
+| Método | Caminho | Corpo | O que faz |
+|---|---|---|---|
+| GET | `/cco/estado?rota_id=` | — | snapshot de rotas, Tasks, estadias, chamadas, ocorrências, chamados e eventos |
+| GET / POST | `/cco/chamados`<br>`/cco/chamados/{id}/responder` | — / `{resposta, respondido_por?}` | lista e responde chamados persistidos; resposta é enviada ao agente |
+| GET / POST | `/cco/chamadas-agente`<br>`/cco/rotas/{id}/ligar` | — / `{motivo?}` | acompanha ou inicia a cascata Twilio → Agora para operador |
+| GET | `/cco/stream?rota_id=` | — | SSE: `snapshot`, `evento`, `task`, `posicao`, `fala`, `contador`, `reset`, `chamado` e alertas |
+| WS | `/ws?rota_id=` ou `?motorista_id=` | — | atualizações da rota e novas atribuições ao motorista |
+| GET / POST | `/tasks`<br>`/tasks/{id}/confirmar` | — / `{confirmado_por}` | lista Tasks e registra que o CCO assumiu |
+| GET | `/eventos?rota_id=&limite=` | — | timeline operacional recente |
+| GET | `/ligacoes`, `/ligacoes/{id}`<br>`/ligacoes/atual/recebedor` | — | chamadas ao recebedor, transcrição e chamada atual |
+| POST | `/rotas/{id}/ligar-recebedor` | `{motivo?}` | inicia ligação ao recebedor |
+| GET / POST | `/operador/chamadas/atual`<br>`/operador/chamadas/{id}/atender` | — / — | a chamada RTC pendente para o operador e ação de atender |
+| GET | `/teste`, `/recebedor` | — | páginas mínimas para testar motorista e recebedor no plano RTC |
+
+### Compatibilidade para clientes existentes
+
+| Método | Caminho | O que faz |
+|---|---|---|
+| POST | `/agent/start`, `/agent/stop` | aliases para iniciar/parar o agente |
+| POST | `/call/receiver` | alias de ligação por `tripId` |
+| GET / POST | `/events` | timeline normalizada e outbox idempotente `DomainEvent` |
+| GET | `/api/route`, `/api/receivers`, `/api/metrics`, `/api/documents` | contratos camelCase consumidos pelos frontends |
 
 ### Mensagens do stream (SSE `event:` / WS `canal`)
 | canal | dado |
@@ -242,6 +294,7 @@ Tipos TypeScript: `npx openapi-typescript {API}/openapi.json -o src/api.ts`.
 | `fala` | `{rota_id, papel, texto}`: o que o agente respondeu |
 | `contador` | `{estadias: [{rota_id, tempo_parado, franquia_restante, valor_fmt, horas_paradas, ...}]}` a cada 1 s |
 | `reset` | `{rota_id}` |
+| `chamado` | `{chamado: ChamadoCCO}`; abertura, lembrete, resposta ou timeout |
 
 Valores de `EventoStream.tipo` (enum `TipoEvento`):
 - sessão: `sessao_iniciada`;
@@ -260,7 +313,7 @@ Obrigatórias: `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`. Recomendadas: `LLM_API_K
 | Variável | Padrão | Para quê |
 |---|---|---|
 | `AGORA_CUSTOMER_ID` / `AGORA_CUSTOMER_SECRET` | vazio | Basic auth na REST; vazio usa auth por token |
-| `LLM_MODE` | `custom` | `custom` = nosso LLM com ferramentas; `agora` = LLM gerenciado |
+| `LLM_MODE` | `custom` | Define sessões não auditáveis. As sessões de **motorista** e **operador** sempre usam o gateway `custom`, pois alertas, decisões e tool calls precisam chegar ao backend/SSE da CCO. |
 | `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | `gpt-4o-mini` | upstream do nosso LLM (qualquer API compatível com OpenAI); sem chave, usa a contingência |
 | `PUBLIC_URL` | descoberta automática | URL do túnel |
 | `RECEBEDOR_MODO` | `rtc` | `rtc` (plano B) ou `sip` (plano A) |
@@ -293,7 +346,7 @@ Qualquer API compatível com OpenAI e com suporte a ferramentas serve. Duas opç
 Depois de editar o `.env`, rode `docker compose up -d --force-recreate api`.
 
 **Sem chave nenhuma, a demo funciona pela contingência** (`dominio/contingencia.py`), que entende:
-- **motorista:** chegada ("cheguei", "tô na portaria"); ocorrências (fila, doca ocupada, documento, avaria, recusa, atraso, acidente); descarga ("descarreguei"); perguntas sobre tempo parado, estadia, doca e CCO, respondidas com o estado real da rota; saudação;
+- **motorista:** início da rota por voz ("quero iniciar a viagem"), chegada ("cheguei", "tô na portaria"), ocorrências (fila, doca ocupada, documento, avaria, recusa, atraso, acidente), descarga ("descarreguei") e perguntas sobre documentos, tempo parado, estadia, doca e CCO, respondidas com o estado real da rota;
 - **recebedor:** extrai a doca e a previsão ("a doca 4 libera em 40 minutos", "às 15h", "só amanhã").
 
 ### Ativar a ligação telefônica real (plano A)
@@ -333,7 +386,7 @@ Fonte: docs da Agora, via o MCP `mcp.agora.io` e o OpenAPI v2.
 - **Ligação ao recebedor (plano B):** na demo, o recebedor atende por uma página web (`/recebedor`) num canal Agora RTC, não por telefone. A ligação telefônica real (plano A, `POST /call`) está implementada e testada com mock, mas desligada: o time não tem número importado na Agora.
 - **Seed fictício:** a transportadora, o motorista, a placa, a NF, o recebedor e os telefones são inventados (`backend/app/seed.py`).
 - **Estadia acelerada:** com `ESTADIA_ACELERACAO=600`, 1 s real conta 10 min, para mostrar a franquia de 5 h e o valor em minutos de demo. Sem a variável, o relógio é real. Os intervalos com o CCO também são curtos (20 s).
-- **CCO:** as "notificações" ao CCO (push, painel, ligação) são eventos no stream do painel. Não há envio real de push nem ligação para a central.
+- **CCO:** chamados de chegada e ocorrência são persistidos no banco local, aparecem no painel e podem ser respondidos por botão. O canal de voz do agente entrega a resposta ao motorista; push/telefonia reais para a central continuam fora do escopo.
 - **Pré-existente / terceiros:**
   - Agora Conversational AI, com o ASR da Agora (ARES, com palavras-chave; Deepgram nova-3 como alternativa) e preset gerenciado MiniMax (TTS);
   - OpenAI (LLM);

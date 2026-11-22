@@ -3,11 +3,11 @@ from fastapi import APIRouter, Depends
 from sqlmodel import select
 
 from ..infra.db import sessao
-from ..infra.models import (Estadia, Evento, EventoGeo, LigacaoRecebedor, Motorista, Ocorrencia, Reporte, Rota,
-                            SessaoAgente, SolicitacaoCentral, TaskCCO)
-from ..servicos import central, consultas, publicacao, rotas, sessoes, tasks
+from ..infra.models import (ChamadaAgente, ChamadoCCO, Estadia, Evento, EventoGeo, LigacaoRecebedor, MensagemMotorista,
+                            Motorista, Ocorrencia, Reporte, Rota, SessaoAgente, SolicitacaoCentral, TaskCCO)
+from ..servicos import central, consultas, mensagens, publicacao, rotas, sessoes, tasks
 from .deps import c, erro_http
-from .schemas import Atribuir, Descarga, NovaRota, NovaSolicitacao, NovoMotorista, Posicao, PosicaoOut
+from .schemas import Atribuir, Descarga, NovaMensagemMotorista, NovaRota, NovaSolicitacao, NovoMotorista, Posicao, PosicaoOut
 
 router = APIRouter(tags=["rotas"])
 
@@ -72,10 +72,12 @@ async def reset(rota_id: int, ct=Depends(c)):
         r = s.get(Rota, rota_id)
         if not r:
             raise erro_http(consultas.NaoEncontrado("rota não existe"))
-        for modelo in (Evento, EventoGeo, Estadia, Ocorrencia, Reporte, SolicitacaoCentral):
+        for modelo in (Evento, EventoGeo, Estadia, Ocorrencia, Reporte, SolicitacaoCentral, ChamadoCCO,
+                       MensagemMotorista, ChamadaAgente):
             for x in s.exec(select(modelo).where(modelo.rota_id == rota_id)).all():
                 s.delete(x)
-        for x in s.exec(select(SessaoAgente).where(SessaoAgente.rota_id == rota_id, SessaoAgente.papel == "recebedor")).all():
+        for x in s.exec(select(SessaoAgente).where(SessaoAgente.rota_id == rota_id,
+                                                   SessaoAgente.papel.in_(("recebedor", "operador")))).all():
             s.delete(x)
         s.commit()
         for modelo in (LigacaoRecebedor, TaskCCO):
@@ -102,6 +104,27 @@ async def nova_solicitacao(rota_id: int, body: NovaSolicitacao, ct=Depends(c)):
 @router.get("/rotas/{rota_id}/solicitacoes")
 def solicitacoes(rota_id: int):
     return central.listar(rota_id)
+
+
+@router.get("/rotas/{rota_id}/mensagens")
+def mensagens_motorista(rota_id: int):
+    return [x.model_dump() for x in mensagens.listar(rota_id)]
+
+
+@router.post("/rotas/{rota_id}/mensagens")
+async def enviar_mensagem_motorista(rota_id: int, body: NovaMensagemMotorista, ct=Depends(c)):
+    """Ação da CCO: a mesma função exposta ao LLM fala e audita a mensagem."""
+    try:
+        return (await mensagens.falar_motorista(ct, rota_id, body.remetente, body.texto)).model_dump()
+    except Exception as e:  # noqa: BLE001
+        raise erro_http(e)
+
+
+@router.get("/rotas/{rota_id}/chamados")
+def chamados_da_rota(rota_id: int):
+    from ..servicos import chamados
+
+    return [x.model_dump() for x in chamados.listar(rota_id)]
 
 
 # ---------------- publicação de rota e motoristas (CCO) ----------------

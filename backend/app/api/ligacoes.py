@@ -6,9 +6,9 @@ from fastapi.responses import FileResponse
 from sqlmodel import select
 
 from ..infra.db import sessao
-from ..infra.models import LigacaoRecebedor
+from ..infra.models import ChamadaAgente, LigacaoRecebedor
 from ..integracoes import tokens
-from ..servicos import consultas, ligacoes, sessoes
+from ..servicos import chamadas_agente, consultas, ligacoes, sessoes
 from .deps import c, erro_http
 from .schemas import Ligar
 
@@ -40,6 +40,18 @@ def _com_token(ct, lig: LigacaoRecebedor) -> dict:
     return d
 
 
+def _operador_publico(ct, chamada: ChamadaAgente) -> dict:
+    d = chamada.model_dump()
+    if chamada.agora_canal and ct.settings.agora_configurada():
+        d.update(
+            app_id=ct.settings.agora_app_id,
+            channel=chamada.agora_canal,
+            uid=sessoes.UID_CCO,
+            token=tokens.token_cliente(ct.settings, chamada.agora_canal, sessoes.UID_CCO),
+        )
+    return d
+
+
 @router.get("/ligacoes/atual/recebedor")
 def atual(ct=Depends(c)):
     """Ligação em andamento mais recente (a página /recebedor consulta a cada 2 s)."""
@@ -56,6 +68,25 @@ def obter(ligacao_id: int, ct=Depends(c)):
     if not lig:
         raise HTTPException(404, "ligação não existe")
     return _com_token(ct, lig)
+
+
+@router.get("/operador/chamadas/atual")
+def chamada_operador_atual(ct=Depends(c)):
+    """A página /operador consulta a chamada RTC pendente e recebe somente o token dela."""
+    with sessao() as s:
+        chamada = s.exec(
+            select(ChamadaAgente).where(ChamadaAgente.status == "agora_tocando")
+            .order_by(ChamadaAgente.id.desc())
+        ).first()
+    return {"chamada": _operador_publico(ct, chamada) if chamada else None}
+
+
+@router.post("/operador/chamadas/{chamada_id}/atender")
+async def atender_chamada_operador(chamada_id: int, ct=Depends(c)):
+    try:
+        return (await chamadas_agente.atender(ct, chamada_id)).model_dump()
+    except Exception as e:  # noqa: BLE001
+        raise erro_http(e)
 
 
 @router.get("/recebedor", include_in_schema=False)

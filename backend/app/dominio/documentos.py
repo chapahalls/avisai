@@ -77,6 +77,15 @@ def _formatar(campo: str, v: Any) -> str:
 def consultar(docs: list[dict], pergunta: str, documento: Optional[str] = None) -> dict:
     """Procura o campo pedido. Nunca inventa: sem campo, devolve encontrado=False."""
     t = normalizar(pergunta or "")
+    if _tem(t, (r"\bquais\b", r"\blista\b", r"\bnome", r"\btem quais\b", r"disponiveis")) and _tem(t, DOC_QUALQUER):
+        titulos = " e ".join(d["title"] for d in docs)
+        return {
+            "encontrado": True,
+            "documento": None,
+            "campo": "documentos",
+            "valor": titulos,
+            "resposta": f"Os documentos disponíveis são: {titulos}.",
+        }
     preferido = documento or ("CT-e" if _tem(t, DOC_CTE) else "NF-e")
     ordem = sorted(docs, key=lambda d: d["kind"] != preferido)
     for d in ordem:

@@ -10,11 +10,11 @@ from sqlmodel import select
 from ..infra import container as ct_mod
 from ..infra.db import sessao
 from ..infra.eventos import dumps, envelope
-from ..infra.models import Estadia, Evento, LigacaoRecebedor, Ocorrencia, Rota, TaskCCO
-from ..servicos import consultas, tasks
+from ..infra.models import ChamadoCCO, Estadia, Evento, LigacaoRecebedor, Ocorrencia, Rota, TaskCCO
+from ..servicos import chamadas_agente, chamados, consultas, tasks
 from .deps import c, erro_http
 from .rotas import rota_publica
-from .schemas import Confirmar, EventoStream
+from .schemas import Confirmar, EventoStream, LigarAgente, ResponderChamado
 
 router = APIRouter(tags=["cco"])
 
@@ -32,6 +32,7 @@ def snapshot(ct, rota_id: Optional[int] = None) -> dict:
             "estadias": [consultas.resumo_estadia_dict(ct, e) for e in s.exec(q(Estadia)).all()],
             "ligacoes": [l.model_dump() for l in s.exec(q(LigacaoRecebedor)).all()],
             "ocorrencias": [o.model_dump() for o in s.exec(q(Ocorrencia)).all()],
+            "chamados": [x.model_dump() for x in s.exec(q(ChamadoCCO)).all()],
             "eventos": [envelope(e) for e in s.exec(q(Evento, 50)).all()],
         }
 
@@ -82,6 +83,33 @@ async def fluxo(ct, rota_id: Optional[int] = None, intervalo_contador: float = 1
 @router.get("/cco/estado")
 def estado(rota_id: Optional[int] = None, ct=Depends(c)):
     return json.loads(dumps(snapshot(ct, rota_id)))
+
+
+@router.get("/cco/chamados")
+def listar_chamados(rota_id: Optional[int] = None, abertos: bool = False):
+    return [x.model_dump() for x in chamados.listar(rota_id, apenas_abertos=abertos)]
+
+
+@router.post("/cco/chamados/{chamado_id}/responder")
+async def responder_chamado(chamado_id: int, body: ResponderChamado, ct=Depends(c)):
+    try:
+        return (await chamados.responder(ct, chamado_id, body.resposta, body.respondido_por)).model_dump()
+    except Exception as e:  # noqa: BLE001
+        raise erro_http(e)
+
+
+@router.get("/cco/chamadas-agente")
+def listar_chamadas_agente(rota_id: Optional[int] = None, abertas: bool = False):
+    return [x.model_dump() for x in chamadas_agente.listar(rota_id, apenas_abertas=abertas)]
+
+
+@router.post("/cco/rotas/{rota_id}/ligar")
+async def ligar_agente(rota_id: int, body: LigarAgente, ct=Depends(c)):
+    """Atalho explícito do CCO; a mesma cascata é disponível à ferramenta do LLM."""
+    try:
+        return (await chamadas_agente.ligar(ct, rota_id, body.destino, body.motivo, iniciado_por="cco")).model_dump()
+    except Exception as e:  # noqa: BLE001
+        raise erro_http(e)
 
 
 @router.get("/cco/stream")
