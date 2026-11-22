@@ -93,3 +93,12 @@ async def test_fala_manual_chama_speak(client, fake_agora):
     r = await client.post(f"/sessions/{s['id']}/speak", json={"texto": "Teste de fala"})
     assert r.status_code == 200
     assert fake_agora.speaks[-1] == {"agent_id": "agent-1", "texto": "Teste de fala", "prioridade": "APPEND"}
+
+
+async def test_nova_sessao_tira_o_agente_antigo_do_canal(client, fake_agora):
+    """Dois agentes com o mesmo uid no canal brigam: a sessão nova faz /leave da antiga."""
+    a = (await client.post("/sessions", json={"rota_id": 1})).json()
+    b = (await client.post("/sessions", json={"rota_id": 1})).json()
+    assert fake_agora.leaves == [a["agent_id"]]
+    sessoes = {s["id"]: s for s in (await client.get("/sessions")).json()}
+    assert sessoes[a["id"]]["status"] == "encerrada" and sessoes[b["id"]]["status"] == "ativa"

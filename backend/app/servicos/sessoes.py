@@ -52,6 +52,14 @@ def _atualizar(sessao_id: int, **campos) -> SessaoAgente:
 
 async def iniciar_motorista(c, rota_id: int) -> SessaoAgente:
     r, nome_mot, empresa = consultas.contexto_rota(rota_id)
+    # Um agente por canal: dois com o uid 9001 se derrubam. Tira os antigos antes do /join novo.
+    with sessao() as s:
+        antigas = s.exec(select(SessaoAgente.id).where(
+            SessaoAgente.rota_id == rota_id, SessaoAgente.papel == Papel.MOTORISTA,
+            SessaoAgente.status == StatusSessao.ATIVA,
+        )).all()
+    for sid in antigas:
+        await encerrar(c, sid)
     with sessao() as s:
         sa = SessaoAgente(rota_id=rota_id, papel=Papel.MOTORISTA, canal=canal_motorista(rota_id),
                           agent_uid=UID_AGENTE_MOTORISTA, user_uid=UID_MOTORISTA, llm_mode=c.settings.llm_mode,
@@ -72,14 +80,6 @@ async def iniciar_motorista(c, rota_id: int) -> SessaoAgente:
     except Exception as e:
         _atualizar(sa.id, status=StatusSessao.FALHOU, erro=str(e)[:500])
         raise
-    with sessao() as s:
-        for antiga in s.exec(select(SessaoAgente).where(
-            SessaoAgente.rota_id == rota_id, SessaoAgente.papel == Papel.MOTORISTA,
-            SessaoAgente.status == StatusSessao.ATIVA,
-        )).all():
-            antiga.status = StatusSessao.ENCERRADA
-            s.add(antiga)
-        s.commit()
     sa = _atualizar(sa.id, agent_id=agent_id, status=StatusSessao.ATIVA)
     c.eventos.registrar(TipoEvento.SESSAO_INICIADA, "Agente de voz entrou no canal do motorista", rota_id,
                         sessao_id=sa.id, agent_id=agent_id)

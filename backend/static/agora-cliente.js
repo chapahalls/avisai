@@ -15,9 +15,15 @@ window.AvisaiRTC = {
     client.on("user-joined", (u) => log(`entrou no canal: uid ${u.uid}`));
     client.on("user-left", (u) => log(`saiu do canal: uid ${u.uid}`));
     await client.join(app_id, channel, token, Number(uid));
-    this.mic = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
+    try {
+      this.mic = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
+    } catch (e) {
+      log(`ERRO: microfone indisponível (${e && (e.code || e.name || e.message)}). ` +
+          `Abra esta página no Chrome em http://localhost:8000 ou https (o painel do app bloqueia o microfone).`);
+      throw e;
+    }
     await client.publish([this.mic]);
-    log(`no canal ${channel} como uid ${uid}, microfone aberto`);
+    log(`no canal ${channel} como uid ${uid}, microfone aberto ✅ pode falar`);
   },
   async sair(log) {
     if (this.mic) { this.mic.close(); this.mic = null; }

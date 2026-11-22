@@ -41,14 +41,18 @@ async function api(m, url, body) {
   return j;
 }
 async function iniciar() {
+  if (AvisaiRTC.client) await encerrar();  // evita dois clientes/agentes no mesmo canal
   const s = await api("POST", "/sessions", { rota_id: Number(rota()) });
   sessaoId = s.id;
   log(`sessão ${s.id} ativa, agent_id ${s.agent_id}`);
-  await AvisaiRTC.entrar({ app_id: s.app_id, channel: s.canal, uid: s.user_uid, token: s.token }, log);
+  try {
+    await AvisaiRTC.entrar({ app_id: s.app_id, channel: s.canal, uid: s.user_uid, token: s.token }, log);
+  } catch (e) { log(`ERRO ao entrar: ${e && (e.message || e)}`); }
 }
 async function encerrar() {
   await AvisaiRTC.sair(log);
   if (sessaoId) await api("DELETE", `/sessions/${sessaoId}`);
+  sessaoId = null;
 }
 const es = new EventSource("/cco/stream");
 es.addEventListener("evento", (e) => { const d = JSON.parse(e.data); log(`${d.tipo}: ${d.mensagem}`); });
