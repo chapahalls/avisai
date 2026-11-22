@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: avisai
+      POSTGRES_PASSWORD: avisai
+      POSTGRES_DB: avisai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/docker/initdb.sql:/docker-entrypoint-initdb.d/initdb.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avisai"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: ./backend
+    user: "${UID:-1000}:${GID:-1000}"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://avisai:avisai@db:5432/avisai
+      TUNNEL_METRICS_URL: http://tunnel:2000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./scripts:/scripts
+    command: sh -c "alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  tunnel:
+    image: cloudflare/cloudflared:2024.12.2
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 --url http://api:8000
+    depends_on:
+      - api
+
+  test:
+    build: ./backend
+    user: "${UID:-1000}:${GID:-1000}"
+    profiles: ["test"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://avisai:avisai@db:5432/avisai_test
+    volumes:
+      - ./backend:/app
+    command: pytest -q
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
