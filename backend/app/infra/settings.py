@@ -19,7 +19,10 @@ class Settings(BaseSettings):
     agora_api_base: str = "https://api.agora.io/api/conversational-ai-agent"
     agora_enable_rtm: bool = True
     agora_asr_preset: str = "deepgram_nova_3"
-    agora_tts_preset: str = "minimax_speech_2_6_turbo"
+    agora_tts_preset: str = "minimax_speech_2_8_turbo"
+    tts_sample_rate: int = 24000  # obrigatório no MiniMax (docs da Agora)
+    tts_language_boost: str = "Portuguese"  # fixa o idioma do MiniMax (evita sotaque errado em frases curtas)
+    tts_speed: float = 1.0
     agora_llm_preset: str = "openai_gpt_4o_mini"
     agora_sal: bool = False
     asr_language: str = "pt-BR"

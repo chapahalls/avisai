@@ -51,3 +51,14 @@ def test_openai_transcribe_com_prompt_de_contexto():
 def test_openai_sem_chave_usa_a_do_llm_openai():
     j = _join(asr_vendor="openai", llm_api_key="sk-llm", llm_base_url="https://api.openai.com/v1")
     assert j["properties"]["asr"]["params"]["api_key"] == "sk-llm"
+
+
+def test_tts_minimax_com_sample_rate_e_idioma_portugues():
+    """Docs da Agora: audio_setting.sample_rate é obrigatório no MiniMax; language_boost fixa o português."""
+    j = _join()
+    tts = j["properties"]["tts"]
+    assert tts["vendor"] == "minimax"
+    assert tts["params"]["audio_setting"]["sample_rate"] == 24000
+    assert tts["params"]["language_boost"] == "Portuguese"
+    assert tts["params"]["voice_setting"]["voice_id"] == "v"
+    assert "minimax_speech_2_8_turbo" in j["preset"]

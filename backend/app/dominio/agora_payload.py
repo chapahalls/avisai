@@ -14,6 +14,9 @@ class ConfigVoz:
     tts_preset: str
     llm_preset: str
     asr_language: str
+    tts_sample_rate: int
+    tts_language_boost: str
+    tts_speed: float
     asr_vendor: str
     asr_model: str
     asr_api_key: str
@@ -30,7 +33,8 @@ class ConfigVoz:
     def de(cls, s) -> "ConfigVoz":
         return cls(
             asr_preset=s.agora_asr_preset, tts_preset=s.agora_tts_preset, llm_preset=s.agora_llm_preset,
-            asr_language=s.asr_language, asr_vendor=s.asr_vendor.strip().lower(), asr_model=s.asr_model.strip(),
+            asr_language=s.asr_language, tts_sample_rate=s.tts_sample_rate,
+            tts_language_boost=s.tts_language_boost, tts_speed=s.tts_speed, asr_vendor=s.asr_vendor.strip().lower(), asr_model=s.asr_model.strip(),
             asr_api_key=s.asr_api_key or (s.llm_api_key if "api.openai.com" in s.llm_base_url else ""),
             asr_keywords=list(s.asr_keywords), enable_rtm=s.agora_enable_rtm, sal=s.agora_sal,
             filler_words=list(s.filler_words), filler_espera_ms=s.filler_espera_ms,
@@ -108,7 +112,11 @@ def montar_join(
         "advanced_features": {"enable_rtm": cfg.enable_rtm},
         "asr": asr,
         "llm": llm,
-        "tts": {"vendor": "minimax", "params": {"voice_setting": {"voice_id": voice_id}}},
+        "tts": {"vendor": "minimax", "params": {
+            "voice_setting": {"voice_id": voice_id, "speed": cfg.tts_speed},
+            "audio_setting": {"sample_rate": cfg.tts_sample_rate},
+            **({"language_boost": cfg.tts_language_boost} if cfg.tts_language_boost else {}),
+        }},
         "interruption": {"enable": True, "mode": "start_of_speech"},  # barge-in
         "filler_words": {
             "enable": True,

@@ -269,6 +269,7 @@ Obrigatórias: `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`. Recomendadas: `LLM_API_K
 | `ASR_MODEL` | vazio | Deepgram: `nova-2` ou `nova-3`; OpenAI: `gpt-4o-mini-transcribe` ou `gpt-4o-transcribe` |
 | `ASR_API_KEY` | vazio | só para `openai`; vazio usa `LLM_API_KEY` se o LLM for a OpenAI |
 | `TTS_VOICE_ID`, `TTS_VOICE_ID_RECEBEDOR` | vozes PT da MiniMax | vozes dos dois agentes |
+| `TTS_SAMPLE_RATE`, `TTS_LANGUAGE_BOOST`, `TTS_SPEED` | `24000`, `Portuguese`, `1.0` | MiniMax `speech-2.8-turbo`: a taxa de amostragem é obrigatória na doc da Agora; `language_boost` fixa o português |
 | `AGORA_SAL` | `false` | Selective Attention Locking (Beta) no agente do motorista |
 | `CCO_INTERVALO_S`, `CCO_MAX_TENTATIVAS` | `20`, `3` | ritmo do escalonamento (a regra da empresa no seed define 3) |
 | `ESTADIA_ACELERACAO` | `1` | relógio da estadia; use `600` na demo |
