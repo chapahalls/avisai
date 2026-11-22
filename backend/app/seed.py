@@ -12,8 +12,8 @@ from .infra import container as ct
 from .infra.db import engine, sessao
 from .infra.models import Empresa, Motorista, RegraEscalonamento, Rota
 
-ORIGEM = ("CD Jundiaí (expedidor)", -23.1857, -46.8978)
-DESTINO = ("Mercadão Campinas, CD Norte (recebedor)", -22.9056, -47.0608)
+ORIGEM = ("CD Jundiaí", -23.1857, -46.8978)
+DESTINO = ("Mercadão Campinas, CD Norte", -22.9056, -47.0608)
 
 
 def trajeto(n: int = 40) -> list[list[float]]:
