@@ -111,6 +111,7 @@ async def ligar(c, rota_id: int, motivo: str, task_id: Optional[int] = None) -> 
             canal=lig.canal, token=tokens.token_agente(c.settings, lig.canal, sa.agent_uid),
             agent_uid=sa.agent_uid, remote_uid=sa.user_uid, prompt=prompt, saudacao=abertura,
             voice_id=c.settings.tts_voice_id_recebedor, llm_url=url, sessao_id=sa.id, idle_timeout=60,
+            termos_rota=[r.recebedor_empresa, r.placa, empresa, "doca", "previsão"],
         )
         try:
             agent_id = await discador(c, modo).ligar(corpo, lig.numero)

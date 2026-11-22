@@ -23,6 +23,15 @@ class Settings(BaseSettings):
     agora_llm_preset: str = "openai_gpt_4o_mini"
     agora_sal: bool = False
     asr_language: str = "pt-BR"
+    # ASR: deepgram (gerenciado, nova-3|nova-2) | ares (ASR da Agora, gerenciado, com palavras-chave) | openai (BYOK)
+    asr_vendor: str = "deepgram"
+    asr_model: str = ""  # vazio = padrão do fornecedor (nova-3 / gpt-4o-mini-transcribe)
+    asr_api_key: str = ""  # openai; vazio = usa LLM_API_KEY se o LLM for a OpenAI
+    asr_keywords: list[str] = [
+        "AvisAI", "doca", "portaria", "pátio", "descarga", "descarreguei", "estadia", "franquia", "recebimento",
+        "recebedor", "CCO", "central", "nota fiscal", "NF-e", "CT-e", "DANFE", "palete", "paletes", "toneladas",
+        "lacre", "canhoto", "avaria", "retirada", "check-in", "ocorrência", "fila", "placa", "frete",
+    ]
     tts_voice_id: str = "Portuguese_Deep-VoicedGentleman"
     tts_voice_id_recebedor: str = "Portuguese_Wiselady"
     filler_words: list[str] = FILLER_PADRAO
