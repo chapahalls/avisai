@@ -143,7 +143,9 @@ async def responder(c, sa: SessaoAgente, msgs_in: list[dict]) -> AsyncIterator[s
     async def contingencia():
         nome, args, texto = heuristica(c, sa, fala)
         if nome:
-            await _executar(c, sa, nome, args, fala)
+            res = await _executar(c, sa, nome, args, fala)
+            if not texto and isinstance(res, dict):
+                texto = res.get("resposta") or "Certo."
         dito.append(texto)
         return texto
 

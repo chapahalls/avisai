@@ -43,6 +43,7 @@ TIPO_DOMINIO = {
     "task_confirmada": "TaskAcknowledged",
     "descarga": "UnloadConfirmed",
     "rota_atribuida": "RouteAssigned",
+    "pergunta_documento": "DocumentQuestionAnswered",
     "rota_publicada": "RoutePublished",
     # extensões (fora da lista do doc)
     "sessao_iniciada": "AgentSessionStarted",
@@ -235,14 +236,10 @@ def api_metrics(ct=Depends(c)):
 @router.get("/api/documents")
 def api_documents(tripId: Optional[str] = None):
     """Documentos fictícios da viagem (mock declarado no README; leitura por voz é P2)."""
+    from ..dominio import documentos
+
     r, _, empresa = consultas.contexto_rota(_rota_id(tripId))
-    return [
-        {"id": f"nfe-{r.nota_fiscal}", "kind": "NF-e", "title": f"NF-e {r.nota_fiscal}", "number": r.nota_fiscal,
-         "issuer": empresa, "recipient": r.recebedor_empresa, "weightKg": r.carga_t * 1000, "items": r.carga_descricao,
-         "valueBRL": 84230.50, "fileUri": None, "mock": True},
-        {"id": "cte-000771204", "kind": "CT-e", "title": "CT-e 000.771.204", "number": "000.771.204",
-         "carrier": empresa, "plate": r.placa, "freightBRL": 3120.00, "fileUri": None, "mock": True},
-    ]
+    return documentos.da_rota(r, empresa)
 
 
 class SsoIn(BaseModel):

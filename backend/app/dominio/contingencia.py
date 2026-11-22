@@ -132,6 +132,10 @@ def _campos_inicial(fala: str, t: str) -> dict:
 
 def _motorista(fala: str, t: str, e: Estado) -> Decisao:
     pergunta = _tem(t, *PERGUNTA)
+    from . import documentos  # import local: documentos usa normalizar() deste módulo
+
+    if documentos.eh_pergunta(fala) and (pergunta or _tem(t, r"me (fala|diz|passa)")):
+        return Decisao("", "consultar_documento", {"pergunta": fala})  # texto = resposta do documento
     if e.retirada_pendente and _tem(t, r"\bconfirm", r"^\s*sim\b", r"\bpeguei\b", r"\bcarreguei\b", r"\bretirei\b", r"\bcarregado\b"):
         return Decisao("Retirada confirmada. Me conta: como tá o caminhão e qual a carga que você pegou?", "confirmar_retirada")
     if _tem(t, r"descarreg", r"terminou a descarga", r"terminei", r"liberaram", r"ta vazio", r"acabou a descarga"):

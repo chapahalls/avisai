@@ -56,6 +56,20 @@ async def _checkin(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
     return reportes.registrar(c, sa.rota_id, "checkin", args, fala)
 
 
+async def _documento(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    from ..dominio import documentos
+    from ..dominio.enums import TipoEvento
+    from . import consultas
+
+    r, _, empresa = consultas.contexto_rota(sa.rota_id)
+    pergunta = args.get("pergunta") or fala
+    res = documentos.consultar(documentos.da_rota(r, empresa), pergunta, args.get("documento"))
+    c.eventos.registrar(TipoEvento.PERGUNTA_DOCUMENTO, f"Pergunta sobre documento: {pergunta} → {res['resposta']}",
+                        sa.rota_id, pergunta=pergunta, encontrado=res["encontrado"], documento=res["documento"],
+                        campo=res["campo"], _fonte="agent")
+    return res
+
+
 async def _responder_central(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
     sol = central.responder(c, sa.rota_id, args.get("resposta") or fala, transcricao=fala)
     return {"ok": bool(sol), "mensagem": "Resposta enviada à central." if sol else "Não há pergunta da central pendente."}
@@ -79,6 +93,14 @@ REGISTRO: dict[str, Ferramenta] = {
             "tempo_viagem": {"type": "string", "description": "Tempo de viagem."},
             "problemas": {"type": "string", "description": "Problemas ou ocorrências; 'nenhum' se não houve."}}},
         _checkin),
+    "consultar_documento": Ferramenta(
+        Papel.MOTORISTA, "Consulta a NF-e ou o CT-e da viagem (número, peso, valor, destinatário, itens, frete, placa, chave). "
+        "Responda só com o que voltar, citando o documento; se não encontrado, diga que não encontrou.",
+        {"type": "object", "properties": {
+            "pergunta": {"type": "string", "description": "A pergunta do motorista."},
+            "documento": {"type": "string", "enum": ["NF-e", "CT-e"], "description": "Se ele disse qual documento."}},
+         "required": ["pergunta"]},
+        _documento),
     "responder_central": Ferramenta(
         Papel.MOTORISTA, "Envia à central a resposta do motorista para a pergunta pendente da central.",
         {"type": "object", "properties": {"resposta": {"type": "string", "description": "Resposta fiel e curta."}},

@@ -157,3 +157,23 @@ async def test_chegada_por_voz_nao_fala_duas_vezes(client, fake_llm, fake_agora)
     fake_llm.respostas = [tool_call("confirmar_chegada", "{}"), "Chegada registrada."]
     await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Cheguei"), headers=AUTH)
     assert not any("contador de estadia" in f for f in fake_agora.falas())
+
+
+async def test_pergunta_sobre_a_nf_usa_ferramenta_e_registra_evento(client, fake_llm):
+    sid = await _sessao(client)
+    fake_llm.respostas = [tool_call("consultar_documento", '{"pergunta":"qual o peso da nota?"}'), "Pela NF-e, 28 toneladas."]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Qual o peso da nota?"), headers=AUTH)
+    tool = [m for m in fake_llm.recebidas[-1]["mensagens"] if m["role"] == "tool"][-1]["content"]
+    assert "28.000 kg" in tool and "NF-e" in tool
+    ev = eventos("pergunta_documento")[-1]
+    assert ev.dados["encontrado"] and ev.dados["campo"] == "peso_kg"
+    evs = (await client.get("/events")).json()
+    assert any(e["type"] == "DocumentQuestionAnswered" for e in evs)
+
+
+async def test_sem_llm_a_contingencia_responde_a_nf(client, container):
+    container.settings.llm_api_key = ""
+    sid = await _sessao(client)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("qual o número da nota fiscal?"), headers=AUTH)
+    partes, _ = sse(r.text)
+    assert "000.482.913" in "".join(partes)

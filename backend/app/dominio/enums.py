@@ -95,3 +95,4 @@ class TipoEvento(StrEnum):
     EVENTO_APP = "evento_app"
     ROTA_PUBLICADA = "rota_publicada"
     ROTA_ATRIBUIDA = "rota_atribuida"
+    PERGUNTA_DOCUMENTO = "pergunta_documento"

@@ -113,6 +113,7 @@ As variáveis do doc também valem: `AGORA_REST_KEY` e `AGORA_REST_SECRET` (equi
 3. **Chegada:** Task (`TaskCreated`) e estadia, e o **check-in por voz** com campos obrigatórios (estado da carga, tempo de viagem, problemas). O agente pergunta **só o que faltou** (`ReportFieldMissing`).
 4. **CCO:** 3 tentativas, e sem resposta o agente liga para o recebedor (já existia).
 5. **Pedido da central:** `POST /rotas/{id}/solicitacoes {pergunta}`. O agente pergunta ao motorista e a resposta volta estruturada (`GET /rotas/{id}/solicitacoes`).
+7. **Pergunta sobre a NF ou o CT-e por voz:** a ferramenta `consultar_documento` responde com o número, peso, valor, destinatário, itens, frete, placa ou chave ("Pela NF-e 000.482.913, o peso é 28.000 kg"). A resposta sai só dos campos do documento, cita qual documento usou e diz "não encontrei" quando o campo não existe; nunca arredonda. O evento é `pergunta_documento`, que aparece como `DocumentQuestionAnswered` no `/events`. Funciona também sem LLM, pela contingência. Os documentos são fictícios.
 6. **Dupla prova de GPS:** `POST /rotas/{id}/posicao` com `fonte=rastreador` registra o GPS do caminhão. Na retirada e na chegada, se celular e rastreador estiverem a mais de 500 m, o evento fica `nao_validado` e sai `divergencia_gps` para o CCO. O simulador manda os dois GPS (`--divergir` força a divergência).
 
 ## Integração com os fronts
