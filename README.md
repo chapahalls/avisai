@@ -8,7 +8,7 @@ Copiloto de voz para transportadoras, focado no **caminhão parado**:
 
 Time Chapahalls (3 pessoas: Jeferson, Henry e Lucas) · hackathon UNMUTE by Agora · backend e infra: Lucas.
 
-**Versão entregue: tag [`v1.1-entrega`](https://github.com/chapahalls/avisai/releases/tag/v1.1-entrega)** (a `v1.0-entrega` foi substituída). Se houver nova correção, ela sai numa tag nova, e a tag `v*-entrega` mais recente é a versão entregue. Licença: [MIT](LICENSE).
+**Versão entregue: tag [`v1.2-entrega`](https://github.com/chapahalls/avisai/releases/tag/v1.2-entrega)** (substitui `v1.0-entrega` e `v1.1-entrega`). Se houver nova correção, ela sai numa tag nova, e a tag `v*-entrega` mais recente é a versão entregue. Licença: [MIT](LICENSE).
 
 **Repositórios do projeto** (todos públicos):
 | Repo | O quê | Responsável |
