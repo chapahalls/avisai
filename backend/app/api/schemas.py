@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TokenOut(BaseModel):
@@ -113,11 +113,18 @@ class NovaRota(BaseModel):
     recebedor: RecebedorIn
     carga_descricao: str = ""
     carga_t: float = Field(gt=0)
+    capacidade_t: Optional[float] = Field(default=None, gt=0, description="Capacidade total do veículo (t); base da estadia. Vazio = carga_t.")
     placa: str = ""
     nota_fiscal: str = ""
     janela_descarga: str = ""
     empresa_id: int = 1
     motorista_id: Optional[int] = None
+
+    @model_validator(mode="after")
+    def _capacidade_cobre_a_carga(self):
+        if self.capacidade_t is not None and self.capacidade_t < self.carga_t:
+            raise ValueError("capacidade_t não pode ser menor que carga_t")
+        return self
 
 
 class Atribuir(BaseModel):

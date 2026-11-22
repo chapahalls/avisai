@@ -58,9 +58,20 @@ def _retirada_pendente(rota_id: int) -> bool:
     return r.status == "na_origem" and geo is not None and geo.confirmacao_voz_em is None
 
 
+def _chegada_pendente(rota_id: int) -> bool:
+    from ..infra.models import EventoGeo
+
+    r = consultas.rota(rota_id)
+    with sessao() as s:
+        geo = s.exec(select(EventoGeo).where(EventoGeo.rota_id == rota_id, EventoGeo.tipo == "CHEGADA")).first()
+    return r.status == "no_destino" and geo is not None and geo.confirmacao_voz_em is None
+
+
 def pendencias(rota_id: int) -> list[str]:
     """O que o agente ainda precisa obter do motorista (vai no estado vivo do LLM)."""
     out = []
+    if _chegada_pendente(rota_id):
+        out.append("Chegada detectada pelo GPS, falta a confirmação por voz: pergunte 'Confirma a chegada?' e use confirmar_chegada.")
     if _retirada_pendente(rota_id):
         out.append("Retirada na origem ainda não confirmada: pergunte 'Confirma a retirada da carga?' e use confirmar_retirada.")
     fi = reportes.faltantes_abertos(rota_id, "inicial")
@@ -106,6 +117,7 @@ def estado_contingencia(c, sa: SessaoAgente) -> contingencia.Estado:
         resumo_recebedor=respondida.resposta_resumo if respondida else None,
         ligacao_status=lig.status if lig else None,
         retirada_pendente=_retirada_pendente(sa.rota_id),
+        chegada_pendente=_chegada_pendente(sa.rota_id),
         inicial_faltantes=reportes.faltantes_abertos(sa.rota_id, "inicial"),
         checkin_faltantes=reportes.faltantes_abertos(sa.rota_id, "checkin"),
         pergunta_central=(central.pendente(sa.rota_id).pergunta if central.pendente(sa.rota_id) else None),

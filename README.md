@@ -106,7 +106,7 @@ Extensões fora da lista do doc: `AgentSessionStarted`, `PickupGeofenceEntered`,
 As variáveis do doc também valem: `AGORA_REST_KEY` e `AGORA_REST_SECRET` (equivalem a `AGORA_CUSTOMER_*`) e `SIP_FROM_NUMBER`. Além do polling, há **SSE** (`/cco/stream`) e **WebSocket** (`/ws`), com entrega instantânea.
 
 ### Publicação de rota e vínculo com o motorista
-1. **CCO publica a rota:** `POST /rotas` com `origem`, `destino`, `recebedor {empresa, nome, telefone_e164}`, `carga_t`, `placa`, `nota_fiscal`, `janela_descarga` e, opcionalmente, `motorista_id`. O trajeto é simulado em linha reta, e a rota fica `publicada`.
+1. **CCO publica a rota:** `POST /rotas` com `origem`, `destino`, `recebedor {empresa, nome, telefone_e164}`, `carga_t`, `capacidade_t` (capacidade total do veículo, que é a base da estadia pela Lei 11.442; vazio usa `carga_t`), `placa`, `nota_fiscal`, `janela_descarga` e, opcionalmente, `motorista_id`. O trajeto é simulado em linha reta, e a rota fica `publicada`.
 2. **Atribui ao motorista:** `POST /rotas/{id}/atribuir {motorista_id}`. A rota passa a `planejada`, sai o evento `rota_atribuida` (**`RouteAssigned`** no `/events`, `source: cco`) e, se o motorista estiver com o agente aberto, ele ouve "Rota nova: …".
 3. **App do motorista:**
    - `POST /auth/sso {email}` devolve `driverId` e o `tripId` da rota atual;
@@ -116,11 +116,12 @@ As variáveis do doc também valem: `AGORA_REST_KEY` e `AGORA_REST_SECRET` (equi
 
 ### Fluxos de operação cobertos (doc, seções 5.5 e 6.3)
 1. **Retirada na origem:** a geocerca da origem faz o agente perguntar "Confirma a retirada da carga?". A confirmação por voz (`confirmar_retirada`) valida a prova, e em seguida vem o **relatório inicial** (caminhão e carga).
+1b. **Atraso na estrada:** uma ocorrência de `atraso` antes da chegada faz o agente ligar para o recebedor com o novo horário (`ReceiverNotified`, `motivo: atraso`).
 2. **Aproximação:** o CCO é avisado e o agente **liga para o recebedor** (`ReceiverNotified`). Os desfechos:
    - confirma a doca: o motorista ouve;
    - **não recebe hoje**: aplica a regra da transportadora (`RegraEscalonamento.acao_nao_recebe`) e avisa o CCO e o motorista;
    - não atende: a tentativa fica como prova.
-3. **Chegada:** Task (`TaskCreated`) e estadia, e o **check-in por voz** com campos obrigatórios (estado da carga, tempo de viagem, problemas). O agente pergunta **só o que faltou** (`ReportFieldMissing`).
+3. **Chegada:** o GPS detecta e o agente pergunta **"Confirma a chegada?"**. A prova (`EventoGeo`) só fica validada com GPS do celular + rastreador + voz. Abre a Task (`TaskCreated`) e a estadia, e o **check-in por voz** com campos obrigatórios (estado da carga, tempo de viagem, problemas). O agente pergunta **só o que faltou** (`ReportFieldMissing`).
 4. **CCO:** 3 tentativas, e sem resposta o agente liga para o recebedor (já existia).
 5. **Pedido da central:** `POST /rotas/{id}/solicitacoes {pergunta}`. O agente pergunta ao motorista e a resposta volta estruturada (`GET /rotas/{id}/solicitacoes`).
 7. **Pergunta sobre a NF ou o CT-e por voz:** a ferramenta `consultar_documento` responde com o número, peso, valor, destinatário, itens, frete, placa ou chave ("Pela NF-e 000.482.913, o peso é 28.000 kg"). A resposta sai só dos campos do documento, cita qual documento usou e diz "não encontrei" quando o campo não existe; nunca arredonda. O evento é `pergunta_documento`, que aparece como `DocumentQuestionAnswered` no `/events`. Funciona também sem LLM, pela contingência. Os documentos são fictícios.

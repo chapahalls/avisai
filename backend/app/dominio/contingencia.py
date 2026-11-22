@@ -24,6 +24,7 @@ class Estado:
     resumo_recebedor: Optional[str] = None
     ligacao_status: Optional[str] = None
     retirada_pendente: bool = False
+    chegada_pendente: bool = False
     inicial_faltantes: Optional[list] = None
     checkin_faltantes: Optional[list] = None
     pergunta_central: Optional[str] = None
@@ -138,6 +139,9 @@ def _motorista(fala: str, t: str, e: Estado) -> Decisao:
         return Decisao("", "consultar_documento", {"pergunta": fala})  # texto = resposta do documento
     if e.retirada_pendente and _tem(t, r"\bconfirm", r"^\s*sim\b", r"\bpeguei\b", r"\bcarreguei\b", r"\bretirei\b", r"\bcarregado\b"):
         return Decisao("Retirada confirmada. Me conta: como tá o caminhão e qual a carga que você pegou?", "confirmar_retirada")
+    if e.chegada_pendente and _tem(t, r"\bconfirm", r"^\s*sim\b", r"\bcheguei\b", r"\bchegamos\b", r"\bisso\b", r"\bpositivo\b"):
+        return Decisao("Chegada confirmada. Me conta: como tá a carga, quanto tempo de viagem e se teve algum problema?",
+                       "confirmar_chegada")
     if _tem(t, r"descarreg", r"terminou a descarga", r"terminei", r"liberaram", r"ta vazio", r"acabou a descarga"):
         return Decisao("Descarga registrada e estadia encerrada. Boa viagem, parceiro!", "confirmar_descarga")
     if not pergunta and _tem(t, r"\bcheguei\b", r"\bchegamos\b", r"\bchegou\b", r"(to|tou|estou) (na|no) (portaria|patio)",

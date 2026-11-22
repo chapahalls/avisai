@@ -64,6 +64,7 @@ async def publicar(c, dados: dict, motorista_id: Optional[int] = None) -> Rota:
             status=StatusRota.PUBLICADA, publicada_em=c.relogio.agora(),
             placa=dados.get("placa", ""), nota_fiscal=dados.get("nota_fiscal", ""),
             carga_descricao=dados.get("carga_descricao", ""), carga_t=dados.get("carga_t", 0),
+            capacidade_t=dados.get("capacidade_t"),
             janela_descarga=dados.get("janela_descarga", ""),
             recebedor_empresa=rec["empresa"], recebedor_nome=rec["nome"], recebedor_telefone_e164=rec["telefone_e164"],
         )

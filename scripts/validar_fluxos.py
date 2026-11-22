@@ -91,7 +91,7 @@ NOVA_ROTA = {
     "origem": {"nome": "CD Jundiaí", "lat": -23.1857, "lng": -46.8978},
     "destino": {"nome": "Atacado Valinhos", "lat": -22.9706, "lng": -46.9958},
     "recebedor": {"empresa": "Atacado Valinhos", "nome": "Rita, do recebimento", "telefone_e164": "+5519900000004"},
-    "carga_descricao": "20 paletes de bebidas", "carga_t": 20, "placa": "VAL-1D23",
+    "carga_descricao": "20 paletes de bebidas", "carga_t": 20, "capacidade_t": 24, "placa": "VAL-1D23",
     "nota_fiscal": "000.600.111", "janela_descarga": "hoje, 15h às 17h",
 }
 
@@ -130,8 +130,18 @@ def main() -> int:
     etapa("3c. Relatório inicial completo por voz", any(e["tipo"] == "relatorio" and e["dados"].get("tipo_reporte") == "inicial"
                                                         for e in eventos(R)), f"agente: {resp}")
 
+    # 3d. Atraso na estrada → recebedor avisado do novo horário
+    for p in trajeto[1:6]:
+        posicao(R, *p, rastreador=(p[0] + 0.00008, p[1]))
+    resp = falar(S, "Vou atrasar uns 40 minutos, trânsito parado")
+    lig_at = esperar(lambda: (l := ligacao(R, "atraso")) and l["status"] == "em_andamento" and l, 30)
+    aviso_at = esperar(lambda: any(e["tipo"] == "aviso_recebedor" and e["dados"].get("motivo") == "atraso" for e in eventos(R)), 10)
+    etapa("3d. Atraso na estrada: agente liga para o recebedor com o novo horário", bool(lig_at and aviso_at), f"agente: {resp}")
+    if lig_at:
+        falar(lig_at["sessao_id"], "Tudo bem, a doca 3 às 16h")
+
     # 4. Viagem até a aproximação → aviso e ligação ao recebedor
-    for p in trajeto[1:]:
+    for p in trajeto[6:]:
         r = posicao(R, *p, rastreador=(p[0] + 0.00008, p[1]))
         if "APROXIMACAO" in r["disparos"]:
             break
@@ -162,6 +172,12 @@ def main() -> int:
     etapa("5. Chegada (GPS + rastreador) cria Task e inicia a estadia", "CHEGADA" in r["disparos"] and geo_ok
           and any(t["rota_id"] == R for t in req("GET", "/tasks")[1]))
     etapa("5b. Sem divergência de GPS quando celular e rastreador concordam", "divergencia_gps" not in tipos(R))
+    etapa("5x. Agente pede a confirmação da chegada (GPS detectou)",
+          any(e["tipo"] == "fala_agente" and "Confirma a chegada" in e["mensagem"] for e in eventos(R)))
+    resp = falar(S, "Sim, confirmo")
+    etapa("5y. Chegada confirmada por voz (prova GPS + rastreador + voz)", "chegada_confirmada_voz" in tipos(R), f"agente: {resp}")
+    est0 = req("GET", f"/cco/estado?rota_id={R}")[1]["estadias"]
+    etapa("5z. Estadia calculada sobre a capacidade do veículo (24 t, carga 20 t)", est0 and est0[0]["capacidade_t"] == 24)
     resp = falar(S, "A carga tá inteira")
     etapa("5c. Check-in parcial: agente pergunta só o que faltou", "campo_faltante" in tipos(R), f"agente: {resp}")
     resp = falar(S, "Foram três horas de viagem, sem problema")

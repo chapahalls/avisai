@@ -76,7 +76,8 @@ async def registrar_posicao(c, rota_id: int, lat: float, lng: float, velocidade_
         if x.chegou and not _ja_teve(s, rota_id, TipoGeo.CHEGADA):
             p = prova(c, r, lat, lng)
             s.add(EventoGeo(rota_id=rota_id, tipo=TipoGeo.CHEGADA, lat=lat, lng=lng, precisao_m=precisao_m,
-                            distancia_m=x.distancia_m, timestamp=agora, **p))
+                            distancia_m=x.distancia_m, timestamp=agora,
+                            **{**p, "status": "nao_validado"}))  # valida com a confirmação por voz
             r.status = StatusRota.NO_DESTINO
             disparos.append(TipoGeo.CHEGADA)
             if p["status"] == "nao_validado" and p["divergencia_m"] is not None:

@@ -70,6 +70,7 @@ class Rota(SQLModel, table=True):
     nota_fiscal: str = ""
     carga_descricao: str = ""
     carga_t: float = 0
+    capacidade_t: Optional[float] = None  # capacidade total do veículo (base da estadia, Lei 11.442)
     janela_descarga: str = ""
     recebedor_empresa: str = ""
     recebedor_nome: str = ""

@@ -73,7 +73,7 @@ def _atualizar(modelo, id_, **campos):
         return x
 
 
-async def ligar(c, rota_id: int, motivo: str, task_id: Optional[int] = None) -> LigacaoRecebedor:
+async def ligar(c, rota_id: int, motivo: str, task_id: Optional[int] = None, detalhe: Optional[str] = None) -> LigacaoRecebedor:
     r, nome_mot, empresa = consultas.contexto_rota(rota_id)
     modo = ModoLigacao.SIP if c.settings.recebedor_modo == ModoLigacao.SIP else ModoLigacao.RTC
     with sessao() as s:
@@ -101,7 +101,7 @@ async def ligar(c, rota_id: int, motivo: str, task_id: Optional[int] = None) -> 
 
         parado = falar_horas(consultas.resumo_estadia(c, e).horas_paradas)
     try:
-        prompt, abertura = prompts.recebedor(r, nome_mot, empresa, motivo, parado)
+        prompt, abertura = prompts.recebedor(r, nome_mot, empresa, motivo, parado, detalhe)
         url = sessoes.llm_url(c, sa.id)
         if not url:
             raise RuntimeError("a ligação ao recebedor exige LLM_MODE=custom (ferramenta registrar_resposta_recebedor)")
@@ -139,9 +139,11 @@ async def ligar(c, rota_id: int, motivo: str, task_id: Optional[int] = None) -> 
         f"[{'telefone' if modo == ModoLigacao.SIP else 'canal RTC, plano B'}].",
         rota_id, ligacao_id=lig.id, modo=modo, motivo=motivo, canal=lig.canal, **extra,
     )
-    if motivo == "aproximacao":  # ReceiverNotified: condição para a estadia (decisão do TJMT)
-        c.eventos.registrar(TipoEvento.AVISO_RECEBEDOR, f"Recebedor avisado antes da chegada (previsão {int(r.eta_min or 0)} min).",
-                            rota_id, ligacao_id=lig.id, eta_min=r.eta_min)
+    if motivo in ("aproximacao", "atraso"):  # ReceiverNotified: condição para a estadia (decisão do TJMT)
+        texto = ("Recebedor avisado do atraso" + (f": {detalhe}" if detalhe else "") if motivo == "atraso"
+                 else "Recebedor avisado antes da chegada") + f" (previsão {int(r.eta_min or 0)} min)."
+        c.eventos.registrar(TipoEvento.AVISO_RECEBEDOR, texto, rota_id, ligacao_id=lig.id, eta_min=r.eta_min,
+                            motivo=motivo, detalhe=detalhe)
     c.em_segundo_plano(f"vigia-lig-{lig.id}", _vigiar(c, lig.id))
     return lig
 

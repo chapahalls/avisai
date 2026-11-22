@@ -52,7 +52,7 @@ async def test_metricas_do_dashboard(client, relogio, container):
     m = (await client.get("/api/metrics")).json()
     assert m["entregas"] == 1
     assert m["horas_paradas_media"] == 7.0
-    assert m["estadia_devida_total"] == 140.0  # 2 h × 28 t × 2,50
+    assert m["estadia_devida_total"] == 150.0  # 2 h × 30 t (capacidade do veículo, não a carga) × 2,50
     assert m["tempo_ate_acao_cco_min_media"] == 30.0
     assert m["tasks_escaladas"] == 0
     assert set(m) >= {"pct_recebedores_avisados", "pct_ligacoes_atendidas", "pct_reportes_completos_1a", "latencia_voz_ms"}
@@ -76,12 +76,13 @@ def _chegada():
         return s.exec(select(EventoGeo).where(EventoGeo.tipo == "CHEGADA")).one()
 
 
-async def test_gps_e_rastreador_juntos_validam_a_chegada(client):
+async def test_gps_e_rastreador_concordam_e_aguardam_a_voz(client):
+    """Os dois GPS juntos registram a prova; a validação completa vem com a voz (test_lacunas_rastreabilidade)."""
     await client.post("/rotas/1/posicao", json={**DESTINO, "fonte": "rastreador"})
     await client.post("/rotas/1/posicao", json={**DESTINO, "fonte": "celular"})
     geo = _chegada()
     assert geo.caminhao_lat is not None and geo.divergencia_m < 100
-    assert geo.status == "validado"
+    assert geo.status == "nao_validado" and geo.confirmacao_voz_em is None
     assert not eventos("divergencia_gps")
 
 

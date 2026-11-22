@@ -38,8 +38,8 @@ async def test_chegada_cria_task_pendente_e_inicia_estadia(client, fake_agora):
     assert len(tasks) == 1 and tasks[0].status in ("pendente", "escalada_recebedor")
     with sessao() as s:
         e = s.exec(select(Estadia)).one()
-    assert e.capacidade_t == 28 and e.fim is None
-    assert any("estadia" in f for f in fake_agora.falas())
+    assert e.capacidade_t == 30 and e.fim is None  # capacidade do veículo da rota do seed
+    assert any("Confirma a chegada" in f and "estadia" in f for f in fake_agora.falas())
 
 
 async def test_chegada_repetida_nao_duplica_task(client):

@@ -124,7 +124,7 @@ def seed(reset: bool = False) -> int:
                 empresa_id=emp.id, motorista_id=carlos.id,
                 origem_nome=ORIGEM[0], origem_lat=ORIGEM[1], origem_lng=ORIGEM[2],
                 destino_nome=DESTINO[0], destino_lat=DESTINO[1], destino_lng=DESTINO[2], trajeto=trajeto(),
-                placa="RST-4B21", nota_fiscal="000.482.913", carga_descricao="28 paletes de bebidas", carga_t=28,
+                placa="RST-4B21", nota_fiscal="000.482.913", carga_descricao="28 paletes de bebidas", carga_t=28, capacidade_t=30,
                 janela_descarga="hoje, 14h às 16h", recebedor_empresa="Mercadão Campinas",
                 recebedor_nome="Marcos, do recebimento", recebedor_telefone_e164=cfg.recebedor_telefone_e164,
                 aproximacao_min=15, raio_chegada_m=300, publicada_em=None,

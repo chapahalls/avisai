@@ -40,8 +40,19 @@ Não pergunte sobre a saúde do motorista. Não peça para ele mexer no celular 
     return prompt, saudacao
 
 
-def recebedor(r: Any, nome_motorista: str, empresa: str, motivo: str, tempo_parado: Optional[str]) -> tuple[str, str]:
-    if motivo == "aproximacao":
+def recebedor(r: Any, nome_motorista: str, empresa: str, motivo: str, tempo_parado: Optional[str],
+              detalhe: Optional[str] = None) -> tuple[str, str]:
+    if motivo == "atraso":
+        eta = f"cerca de {int(r.eta_min)} minutos" if r.eta_min else "um horário ainda a confirmar"
+        situacao = (f"O caminhão atrasou na estrada ({detalhe or 'motivo não informado'}). Nova previsão de chegada: {eta}. "
+                    f"Janela combinada: {r.janela_descarga or 'não informada'}. Objetivo: avisar o atraso e confirmar se "
+                    "ainda recebem, em qual doca e horário.")
+        abertura = (
+            f"Olá, {r.recebedor_nome}? Aqui é a assistente virtual da {empresa}. O caminhão placa {r.placa}, "
+            f"nota fiscal {r.nota_fiscal}, atrasou na estrada ({detalhe or 'imprevisto no trajeto'}). "
+            f"A nova previsão é de chegar em {eta}. Ainda conseguem receber? Qual doca e horário?"
+        )
+    elif motivo == "aproximacao":
         eta = int(r.eta_min or 15)
         situacao = f"O caminhão chega em cerca de {eta} minutos. Objetivo: confirmar doca e horário de descarga antes da chegada."
         abertura = (

@@ -48,7 +48,7 @@ async def on_chegada(c, rota_id: int, origem: str = "gps", transcricao: Optional
                                     transcricao=transcricao)
             return t
         t = TaskCCO(rota_id=rota_id, tipo="chegada", status=StatusTask.PENDENTE, criada_em=agora)
-        e = Estadia(rota_id=rota_id, inicio=agora, capacidade_t=r.carga_t,
+        e = Estadia(rota_id=rota_id, inicio=agora, capacidade_t=r.capacidade_t or r.carga_t,
                     franquia_h=c.settings.estadia_franquia_h, valor_t_h=c.settings.estadia_valor_t_h)
         s.add(t)
         s.add(e)
@@ -66,7 +66,11 @@ async def on_chegada(c, rota_id: int, origem: str = "gps", transcricao: Optional
     from . import reportes
 
     reportes.iniciar(c, rota_id, "checkin")  # o agente vai pedir o check-in (só o que faltar)
-    if origem != "voz":  # por voz, o próprio agente já responde ao motorista
+    if origem == "gps":  # dupla prova: o GPS detectou; a voz confirma
+        await VozAgora(c).falar_motorista(
+            rota_id, f"Parece que você chegou em {r.destino_nome}. Confirma a chegada? Já avisei o CCO e o contador "
+                     "de estadia começou: são cinco horas de franquia.")
+    elif origem != "voz":  # por voz, o próprio agente já responde ao motorista
         await VozAgora(c).falar_motorista(
             rota_id, "Chegada registrada. Avisei o CCO e o contador de estadia começou: são cinco horas de franquia. "
                      "Se tiver fila ou problema na doca, me fala.")
@@ -215,4 +219,7 @@ def registrar_ocorrencia(c, rota_id: int, tipo: str, descricao: str, transcricao
         s.commit()
         s.refresh(o)
     c.eventos.registrar(TipoEvento.OCORRENCIA, f"Ocorrência ({tipo}): {descricao}", rota_id, ocorrencia_id=o.id, tipo_ocorrencia=tipo)
+    if tipo == "atraso" and r.status in (StatusRota.PLANEJADA, StatusRota.NA_ORIGEM, StatusRota.EM_TRANSITO, StatusRota.APROXIMANDO):
+        # atraso na estrada: avisa o recebedor do novo horário (quem perde a janela espera mais na chegada)
+        c.em_segundo_plano(f"lig-atraso-{rota_id}", ligacoes.ligar(c, rota_id, motivo="atraso", detalhe=descricao))
     return o
