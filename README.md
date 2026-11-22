@@ -210,7 +210,14 @@ Obrigatórias: `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`. Recomendadas: `LLM_API_K
 | `LIGACAO_TIMEOUT_S` | `180` | sem resposta até aqui, a ligação é registrada como não atendida |
 
 ### Ativar a ligação telefônica real (plano A)
-1. No console da Agora, importe um número (Import phone numbers) ou configure um SIP trunk.
+**Twilio (Elastic SIP Trunk), automatizado:**
+1. Compre um número na Twilio. Um número dos EUA (+1) sai na hora; um brasileiro exige cadastro regulatório.
+2. No `.env`, coloque `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_NUMERO=+1…` e `TWILIO_TRUNK_DOMINIO=avisai-<time>`. O backend não usa essas credenciais; só o script de setup.
+3. Rode `make twilio`. O script cria o trunk com a Termination URI `<dominio>.pstn.twilio.com`, cria a IP ACL com os IPs SIP de saída da Agora (+1 e +55), vincula a ACL ao trunk, associa o número e imprime o que cadastrar na Agora.
+4. Na Twilio, habilite o Brasil nas permissões geográficas de voz (Geo Permissions). Conta trial só liga para números verificados.
+
+**Agora:**
+1. No console da Agora, em *Phone Numbers → Add Phone Number*, cadastre o número com vendor *SIP Trunk*, o endereço e o protocolo que o script imprimiu.
 2. No `.env`: `RECEBEDOR_MODO=sip`, `AGORA_SIP_FROM_NUMBER=+55…` e `RECEBEDOR_TELEFONE_E164=+55…` (o telefone de quem atende).
 3. `make up` de novo. O agente passa a ligar com `POST /call` e acompanha o estado por `GET /calls/{id}`.
 

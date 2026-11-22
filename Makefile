@@ -1,5 +1,5 @@
 # Atalhos: tudo roda dentro do Docker.
-.PHONY: up down logs test migrate revision seed sim url psql
+.PHONY: up down logs test migrate revision seed sim url psql twilio
 
 up:
 	docker compose up -d --build db api tunnel
@@ -30,3 +30,7 @@ url:
 
 psql:
 	docker compose exec db psql -U avisai avisai
+
+# Configura o Elastic SIP Trunk da Twilio (lê TWILIO_* do .env; não imprime segredos)
+twilio:
+	docker compose run --rm -T api python /scripts/twilio_trunk.py
