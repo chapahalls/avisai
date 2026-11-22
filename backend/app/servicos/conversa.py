@@ -10,7 +10,7 @@ from ..dominio import contingencia, prompts
 from ..dominio.enums import Papel, TipoEvento
 from ..infra.db import sessao
 from ..infra.models import Evento, LigacaoRecebedor, SessaoAgente
-from . import consultas, ferramentas
+from . import central, consultas, ferramentas, reportes
 
 log = logging.getLogger("avisai.conversa")
 MAX_PASSADAS = 4
@@ -45,7 +45,34 @@ def estado(c, rota_id: int) -> str:
     return prompts.estado_atual(
         r.status, r.distancia_m, r.eta_min, consultas.resumo_estadia(c, e) if e else None,
         consultas.ultima_task(rota_id), consultas.ultima_ligacao(rota_id), [ev.mensagem for ev in reversed(evs)],
+        pendencias(rota_id),
     )
+
+
+def _retirada_pendente(rota_id: int) -> bool:
+    from ..infra.models import EventoGeo
+
+    r = consultas.rota(rota_id)
+    with sessao() as s:
+        geo = s.exec(select(EventoGeo).where(EventoGeo.rota_id == rota_id, EventoGeo.tipo == "RETIRADA")).first()
+    return r.status == "na_origem" and geo is not None and geo.confirmacao_voz_em is None
+
+
+def pendencias(rota_id: int) -> list[str]:
+    """O que o agente ainda precisa obter do motorista (vai no estado vivo do LLM)."""
+    out = []
+    if _retirada_pendente(rota_id):
+        out.append("Retirada na origem ainda não confirmada: pergunte 'Confirma a retirada da carga?' e use confirmar_retirada.")
+    fi = reportes.faltantes_abertos(rota_id, "inicial")
+    if fi:
+        out.append("Relatório inicial pendente; pergunte só: " + ", ".join(reportes.ROTULOS[k] for k in fi) + " (registrar_relatorio_inicial).")
+    fc = reportes.faltantes_abertos(rota_id, "checkin")
+    if fc:
+        out.append("Check-in pendente; pergunte só: " + ", ".join(reportes.ROTULOS[k] for k in fc) + " (registrar_checkin).")
+    sol = central.pendente(rota_id)
+    if sol:
+        out.append(f"Pergunta da central aguardando resposta do motorista: '{sol.pergunta}' (use responder_central).")
+    return out
 
 
 def _transcrever(sa: SessaoAgente, quem: str, texto: str) -> None:
@@ -78,6 +105,10 @@ def estado_contingencia(c, sa: SessaoAgente) -> contingencia.Estado:
         doca=respondida.doca if respondida else None, previsao=respondida.previsao if respondida else None,
         resumo_recebedor=respondida.resposta_resumo if respondida else None,
         ligacao_status=lig.status if lig else None,
+        retirada_pendente=_retirada_pendente(sa.rota_id),
+        inicial_faltantes=reportes.faltantes_abertos(sa.rota_id, "inicial"),
+        checkin_faltantes=reportes.faltantes_abertos(sa.rota_id, "checkin"),
+        pergunta_central=(central.pendente(sa.rota_id).pergunta if central.pendente(sa.rota_id) else None),
     )
 
 
@@ -122,11 +153,14 @@ async def responder(c, sa: SessaoAgente, msgs_in: list[dict]) -> AsyncIterator[s
         msgs = limpar(msgs_in)
         msgs.insert(1 if msgs and msgs[0].get("role") == "system" else 0, {"role": "system", "content": estado(c, sa.rota_id)})
         schemas = ferramentas.schemas(sa.papel)
+        t0 = time.monotonic()
         for _ in range(MAX_PASSADAS):
             calls = None
             try:
                 async for ev in c.llm.stream(msgs, schemas):
                     if "texto" in ev:
+                        if not dito:
+                            c.latencias.append((time.monotonic() - t0) * 1000)
                         dito.append(ev["texto"])
                         yield ev["texto"]
                     elif "tool_calls" in ev:

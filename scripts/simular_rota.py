@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """GPS simulado: move o caminhão pelo trajeto da rota, chamando POST /rotas/{id}/posicao.
+Manda o GPS do celular e o do "rastreador do caminhão" (dupla prova; --divergir força a divergência).
 
 Uso:
   python scripts/simular_rota.py                      # rota 1, http://localhost:8000
@@ -29,6 +30,8 @@ def main() -> None:
     ap.add_argument("--velocidade", type=float, default=60, help="km/h informada ao backend (para o ETA)")
     ap.add_argument("--desde", type=int, default=0, help="índice inicial do trajeto")
     ap.add_argument("--reset", action="store_true", help="reseta a rota antes de começar")
+    ap.add_argument("--sem-rastreador", action="store_true", help="manda só o GPS do celular")
+    ap.add_argument("--divergir", action="store_true", help="rastreador ~1 km longe na chegada (testa a divergência)")
     a = ap.parse_args()
 
     if a.reset:
@@ -37,6 +40,9 @@ def main() -> None:
     pontos = rota["trajeto"]
     print(f"Rota {a.rota}: {rota['origem_nome']} -> {rota['destino_nome']} ({len(pontos)} pontos)")
     for i, (lat, lng) in enumerate(pontos[a.desde:], start=a.desde):
+        if not a.sem_rastreador:  # "rastreador do caminhão": mesma posição com ruído de ~10 m
+            dlat = 0.009 if a.divergir and i >= len(pontos) - 3 else 0.00008
+            req("POST", f"{a.api}/rotas/{a.rota}/posicao", {"lat": lat + dlat, "lng": lng, "fonte": "rastreador"})
         r = req("POST", f"{a.api}/rotas/{a.rota}/posicao", {"lat": lat, "lng": lng, "velocidade_kmh": a.velocidade, "precisao_m": 8})
         extra = f"  >>> {', '.join(r['disparos'])}" if r.get("disparos") else ""
         print(f"[{i:02d}] {r['distancia_m'] / 1000:6.1f} km  ETA {r['eta_min']:5.1f} min  {r['status']}{extra}")

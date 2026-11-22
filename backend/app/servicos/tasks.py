@@ -30,7 +30,9 @@ async def on_chegada(c, rota_id: int, origem: str = "gps", transcricao: Optional
         geo = s.exec(select(EventoGeo).where(EventoGeo.rota_id == rota_id, EventoGeo.tipo == TipoGeo.CHEGADA)).first()
         if origem == "voz":
             if geo:
-                geo.confirmacao_voz_transcricao, geo.confirmacao_voz_em, geo.status = transcricao, agora, "validado"
+                geo.confirmacao_voz_transcricao, geo.confirmacao_voz_em = transcricao, agora
+                if not _divergente(c, geo):  # celular × rastreador divergentes continuam não validados
+                    geo.status = "validado"
                 s.add(geo)
             else:
                 s.add(EventoGeo(rota_id=rota_id, tipo=TipoGeo.CHEGADA, lat=r.ultima_lat, lng=r.ultima_lng,
@@ -53,18 +55,53 @@ async def on_chegada(c, rota_id: int, origem: str = "gps", transcricao: Optional
         s.commit()
         s.refresh(t)
         s.refresh(e)
+    c.eventos.registrar(TipoEvento.TASK_CRIADA, f"Task de chegada criada para o CCO (rota {rota_id}).", rota_id,
+                        task_id=t.id, prioridade=t.prioridade)
     c.eventos.registrar(
         TipoEvento.CHEGADA,
         f"Carga da rota {rota_id} ({r.placa}) chegou em {r.destino_nome}. Task criada para o CCO; estadia contando.",
         rota_id, task_id=t.id, estadia_id=e.id, origem=origem,
     )
     _publicar_task(c, t)
+    from . import reportes
+
+    reportes.iniciar(c, rota_id, "checkin")  # o agente vai pedir o check-in (só o que faltar)
     if origem != "voz":  # por voz, o próprio agente já responde ao motorista
         await VozAgora(c).falar_motorista(
             rota_id, "Chegada registrada. Avisei o CCO e o contador de estadia começou: são cinco horas de franquia. "
                      "Se tiver fila ou problema na doca, me fala.")
     c.em_segundo_plano(f"escalonamento-{t.id}", loop_escalonamento(c, t.id))
     return t
+
+
+def _divergente(c, geo: EventoGeo) -> bool:
+    return geo.divergencia_m is not None and geo.divergencia_m > c.settings.divergencia_gps_max_m
+
+
+async def confirmar_retirada(c, rota_id: int, transcricao: Optional[str] = None, origem: str = "voz") -> EventoGeo:
+    """Motorista confirma a retirada na origem (dupla prova: GPS + voz)."""
+    agora = c.relogio.agora()
+    with sessao() as s:
+        r = s.get(Rota, rota_id)
+        if not r:
+            raise consultas.NaoEncontrado(f"rota {rota_id} não existe")
+        geo = s.exec(select(EventoGeo).where(EventoGeo.rota_id == rota_id, EventoGeo.tipo == TipoGeo.RETIRADA)).first()
+        if not geo:
+            geo = EventoGeo(rota_id=rota_id, tipo=TipoGeo.RETIRADA, lat=r.ultima_lat, lng=r.ultima_lng, timestamp=agora)
+        geo.confirmacao_voz_transcricao, geo.confirmacao_voz_em = transcricao, agora
+        geo.status = "nao_validado" if _divergente(c, geo) else "validado"
+        s.add(geo)
+        if r.status in (StatusRota.PLANEJADA, StatusRota.NA_ORIGEM):
+            r.status = StatusRota.EM_TRANSITO
+            s.add(r)
+        s.commit()
+        s.refresh(geo)
+    c.eventos.registrar(TipoEvento.RETIRADA, f"Retirada confirmada por {origem} em {r.origem_nome}.", rota_id,
+                        transcricao=transcricao, validado=geo.status == "validado")
+    from . import reportes
+
+    reportes.iniciar(c, rota_id, "inicial")  # em seguida, o relatório inicial por voz
+    return geo
 
 
 def _regra(c, rota_id: int) -> tuple[int, float, list]:

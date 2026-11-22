@@ -23,6 +23,10 @@ class Estado:
     previsao: Optional[str] = None
     resumo_recebedor: Optional[str] = None
     ligacao_status: Optional[str] = None
+    retirada_pendente: bool = False
+    inicial_faltantes: Optional[list] = None
+    checkin_faltantes: Optional[list] = None
+    pergunta_central: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +58,10 @@ OCORRENCIAS = [  # (tipo, padrões, rótulo falado) — a ordem importa
     ("acidente", (r"acident", r"batida", r"bateram"), "acidente"),
     ("atraso", (r"atras",), "atraso"),
 ]
+
+ROTULOS = {"estado_caminhao": "como tá o caminhão", "carga": "qual a carga que você pegou",
+           "status_carga": "como tá a carga", "tempo_viagem": "quanto tempo de viagem", "problemas": "se teve algum problema"}
+DURACAO = r"\b(\d+|uma|um|duas|dois|tres|quatro|cinco|seis|sete|oito|nove|dez|meia)\s*(e meia\s*)?(horas?|h\b|minutos?|min\b)"
 
 NUMEROS = {"um": "1", "uma": "1", "dois": "2", "duas": "2", "tres": "3", "quatro": "4", "cinco": "5",
            "seis": "6", "sete": "7", "oito": "8", "nove": "9", "dez": "10"}
@@ -89,14 +97,61 @@ def _cco(e: Estado) -> str:
     return "Ainda não tem caso aberto com o CCO. Eu abro assim que você chegar."
 
 
+def _restantes(faltantes: list, achados: dict) -> list:
+    return [k for k in faltantes if k not in achados]
+
+
+def _pedir(restantes: list, completo: str) -> str:
+    if not restantes:
+        return completo
+    return "Anotado. E " + " e ".join(ROTULOS[k] for k in restantes) + "?"
+
+
+def _campos_checkin(fala: str, t: str) -> dict:
+    out = {}
+    if _tem(t, r"carga", r"inteir", r"intact", r"avari", r"perfeit"):
+        out["status_carga"] = "avariada" if _tem(t, r"(?<!sem )avari") else "ok"
+    dur = _recorte(fala, t, DURACAO)
+    if dur:
+        out["tempo_viagem"] = dur
+    if _tem(t, r"sem problema", r"nenhum", r"\bnada\b", r"tranquil", r"sem ocorrencia"):
+        out["problemas"] = "nenhum"
+    elif _tem(t, r"problema", r"\bteve\b"):
+        out["problemas"] = fala
+    return out
+
+
+def _campos_inicial(fala: str, t: str) -> dict:
+    out = {}
+    if _tem(t, r"caminhao", r"tudo certo", r"tudo ok", r"tranquil", r"\bok\b"):
+        out["estado_caminhao"] = fala
+    if _tem(t, r"carga", r"palete", r"tonelad", r"caixa", r"\bpeguei\b", r"carreguei"):
+        out["carga"] = fala
+    return out
+
+
 def _motorista(fala: str, t: str, e: Estado) -> Decisao:
     pergunta = _tem(t, *PERGUNTA)
+    if e.retirada_pendente and _tem(t, r"\bconfirm", r"^\s*sim\b", r"\bpeguei\b", r"\bcarreguei\b", r"\bretirei\b", r"\bcarregado\b"):
+        return Decisao("Retirada confirmada. Me conta: como tá o caminhão e qual a carga que você pegou?", "confirmar_retirada")
     if _tem(t, r"descarreg", r"terminou a descarga", r"terminei", r"liberaram", r"ta vazio", r"acabou a descarga"):
         return Decisao("Descarga registrada e estadia encerrada. Boa viagem, parceiro!", "confirmar_descarga")
     if not pergunta and _tem(t, r"\bcheguei\b", r"\bchegamos\b", r"\bchegou\b", r"(to|tou|estou) (na|no) (portaria|patio)",
                              r"\bna portaria\b", r"\bno patio\b"):
-        return Decisao("Chegada registrada. Avisei o CCO e o contador de estadia começou: são cinco horas de franquia.",
-                       "confirmar_chegada")
+        return Decisao("Chegada registrada, CCO avisado e estadia contando. Me conta: como tá a carga, "
+                       "quanto tempo de viagem e se teve algum problema?", "confirmar_chegada")
+    if e.pergunta_central and not pergunta and not any(_tem(t, *p) for _, p, _ in OCORRENCIAS):
+        return Decisao("Fechado, passei pra central.", "responder_central", {"resposta": fala})
+    if e.checkin_faltantes and not pergunta:
+        achados = {k: v for k, v in _campos_checkin(fala, t).items() if k in e.checkin_faltantes}
+        if achados:
+            return Decisao(_pedir(_restantes(e.checkin_faltantes, achados), "Check-in completo, valeu!"),
+                           "registrar_checkin", achados)
+    if e.inicial_faltantes and not pergunta:
+        achados = {k: v for k, v in _campos_inicial(fala, t).items() if k in e.inicial_faltantes}
+        if achados:
+            return Decisao(_pedir(_restantes(e.inicial_faltantes, achados), "Relatório inicial completo. Boa viagem!"),
+                           "registrar_relatorio_inicial", achados)
     if pergunta:
         if _tem(t, r"\bcco\b", r"\bcentral\b"):
             return Decisao(_cco(e))
@@ -118,7 +173,7 @@ def _motorista(fala: str, t: str, e: Estado) -> Decisao:
                    "a descarga, ou te dizer o tempo parado e a estadia.")
 
 
-def _recorte(fala: str, t: str, padrao: str) -> Optional[str]:
+def _recorte(fala: str, t: str, padrao: str) -> Optional[str]:  # noqa: F811
     m = re.search(padrao, t)
     return fala[m.start():m.end()].strip() if m else None
 

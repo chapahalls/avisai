@@ -1,6 +1,7 @@
 """Container de dependências: monta as portas reais; os testes trocam por fakes com `definir`."""
 import asyncio
 import logging
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -24,6 +25,7 @@ class Container:
     relogio: Any = field(default_factory=RelogioSistema)  # portas.Relogio
     eventos: Eventos = field(default_factory=Eventos)
     tarefas: dict = field(default_factory=dict)
+    latencias: deque = field(default_factory=lambda: deque(maxlen=200))  # ms até o 1º trecho do LLM
 
     def em_segundo_plano(self, chave: str, coro) -> asyncio.Task:
         antiga = self.tarefas.get(chave)

@@ -4,6 +4,7 @@ from enum import StrEnum
 
 class StatusRota(StrEnum):
     PLANEJADA = "planejada"
+    NA_ORIGEM = "na_origem"
     EM_TRANSITO = "em_transito"
     APROXIMANDO = "aproximando"
     NO_DESTINO = "no_destino"
@@ -80,3 +81,14 @@ class TipoEvento(StrEnum):
     FALA_MOTORISTA = "fala_motorista"
     FALA_RECEBEDOR = "fala_recebedor"
     FALA_AGENTE = "fala_agente"
+    RETIRADA_DETECTADA = "retirada_detectada"
+    RETIRADA = "retirada"
+    RELATORIO = "relatorio"
+    CAMPO_FALTANTE = "campo_faltante"
+    TASK_CRIADA = "task_criada"
+    AVISO_RECEBEDOR = "aviso_recebedor"
+    NAO_RECEBE_HOJE = "nao_recebe_hoje"
+    PEDIDO_CENTRAL = "pedido_central"
+    RESPOSTA_CENTRAL = "resposta_central"
+    DIVERGENCIA_GPS = "divergencia_gps"
+    EVENTO_APP = "evento_app"

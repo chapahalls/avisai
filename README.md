@@ -72,6 +72,40 @@ scripts/simular_rota.py   GPS simulado
 
 ---
 
+## Compatibilidade com `docs/arquitetura-avisai.md` (repo de ideias)
+Os fronts podem seguir o contrato do doc sem mudança. A api também responde na **porta 8787**, e as rotas do `agent-server` existem aqui:
+
+| Rota do doc | O que faz aqui |
+|---|---|
+| `POST /agent/start` `{tripId}` | inicia o agente e devolve `{sessionId, agentId, agentUid, appId, channel, uid, token}` |
+| `POST /agent/stop` `{sessionId \| agentId}` | `/leave` do agente |
+| `GET /token?channel&uid` | token RTC+RTM |
+| `POST /call/receiver` `{tripId, reason}` | liga para o recebedor (plano B ou plano A) |
+| `POST /events` | **outbox idempotente**: `DomainEvent` com `idempotencyKey` (200 na primeira vez, 409 se repetido). Aplica `ArrivalRegistered`, `PickupConfirmed`, `OccurrenceCreated`, `UnloadConfirmed` e `ReportSubmitted` |
+| `GET /events?tripId&since` | linha do tempo no formato `DomainEvent {id, idempotencyKey, tripId, type, occurredAt, receivedAt, source, payload}`; serve para o polling de 2 s |
+| `GET /api/route?tripId` | rota do dia: polyline, origem, destino, recebedor, placa, NF, canal e uids |
+| `GET /api/receivers` | ranking de recebedores: espera média, ligações atendidas, estadia devida, avisados antes da chegada |
+| `GET /api/metrics` | KPIs da seção 6.2: horas paradas, estadia devida, tempo até ação do CCO, tasks escaladas, % avisados, % atendidas, % reportes completos na 1ª, latência do LLM |
+| `GET /api/documents` | NF-e e CT-e fictícios (mock) |
+| `POST /auth/sso` | SSO mock (token fake; papel `cco` se o e-mail tiver "cco") |
+
+Os `type` do contrato saem dos nossos eventos: `retirada`→`PickupConfirmed`, `relatorio`→`ReportSubmitted`, `campo_faltante`→`ReportFieldMissing`, `ocorrencia`→`OccurrenceCreated`, `aproximacao`→`ApproachDetected`, `aviso_recebedor`→`ReceiverNotified`, `resposta_recebedor`/`ligacao_nao_atendida`→`ReceiverCallResult` (`payload.answered`), `chegada`→`ArrivalRegistered`, `task_criada`→`TaskCreated`, `notificacao_cco`/`escalada_recebedor`→`TaskEscalated`, `task_confirmada`→`TaskAcknowledged`, `descarga`→`UnloadConfirmed`.
+
+Extensões fora da lista do doc: `AgentSessionStarted`, `PickupGeofenceEntered`, `ReceiverCallStarted`, `ReceiverCallFailed`, `ReceiverCallFallback`, `ReceiverRefusedToday`, `CentralRequestSent`, `CentralRequestAnswered`, `GpsDivergence`, `VoiceTranscript`.
+
+As variáveis do doc também valem: `AGORA_REST_KEY` e `AGORA_REST_SECRET` (equivalem a `AGORA_CUSTOMER_*`) e `SIP_FROM_NUMBER`. Além do polling, há **SSE** (`/cco/stream`) e **WebSocket** (`/ws`), com entrega instantânea.
+
+### Fluxos de operação cobertos (doc, seções 5.5 e 6.3)
+1. **Retirada na origem:** a geocerca da origem faz o agente perguntar "Confirma a retirada da carga?". A confirmação por voz (`confirmar_retirada`) valida a prova, e em seguida vem o **relatório inicial** (caminhão e carga).
+2. **Aproximação:** o CCO é avisado e o agente **liga para o recebedor** (`ReceiverNotified`). Os desfechos:
+   - confirma a doca: o motorista ouve;
+   - **não recebe hoje**: aplica a regra da transportadora (`RegraEscalonamento.acao_nao_recebe`) e avisa o CCO e o motorista;
+   - não atende: a tentativa fica como prova.
+3. **Chegada:** Task (`TaskCreated`) e estadia, e o **check-in por voz** com campos obrigatórios (estado da carga, tempo de viagem, problemas). O agente pergunta **só o que faltou** (`ReportFieldMissing`).
+4. **CCO:** 3 tentativas, e sem resposta o agente liga para o recebedor (já existia).
+5. **Pedido da central:** `POST /rotas/{id}/solicitacoes {pergunta}`. O agente pergunta ao motorista e a resposta volta estruturada (`GET /rotas/{id}/solicitacoes`).
+6. **Dupla prova de GPS:** `POST /rotas/{id}/posicao` com `fonte=rastreador` registra o GPS do caminhão. Na retirada e na chegada, se celular e rastreador estiverem a mais de 500 m, o evento fica `nao_validado` e sai `divergencia_gps` para o CCO. O simulador manda os dois GPS (`--divergir` força a divergência).
+
 ## Integração com os fronts
 
 | Quem | Usa SDK da Agora? | Como fala com o backend |
@@ -206,7 +240,7 @@ Obrigatórias: `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`. Recomendadas: `LLM_API_K
 | `AGORA_SAL` | `false` | Selective Attention Locking (Beta) no agente do motorista |
 | `CCO_INTERVALO_S`, `CCO_MAX_TENTATIVAS` | `20`, `3` | ritmo do escalonamento (a regra da empresa no seed define 3) |
 | `ESTADIA_ACELERACAO` | `1` | relógio da estadia; use `600` na demo |
-| `LIGAR_RECEBEDOR_NA_APROXIMACAO` | `false` | liga também na aproximação |
+| `LIGAR_RECEBEDOR_NA_APROXIMACAO` | `true` | liga para o recebedor já na aproximação (fluxo do repo de ideias) |
 | `LIGACAO_TIMEOUT_S` | `180` | sem resposta até aqui, a ligação é registrada como não atendida |
 
 ### LLM sem custo (opcional)
@@ -251,6 +285,8 @@ Fonte: docs da Agora, via o MCP `mcp.agora.io` e o OpenAPI v2.
 ---
 
 ## Simulado / pré-existente (E5/E8)
+- **Rastreador do caminhão simulado:** o simulador manda um segundo GPS (`fonte=rastreador`) com ruído de cerca de 10 m, que serve de dupla prova. Integração real com Sascar, Omnilink etc. fica fora.
+- **Documentos, SSO e métricas:** `/api/documents` devolve NF-e e CT-e fictícios; `/auth/sso` devolve token fake; a latência em `/api/metrics` mede só o nosso LLM até o primeiro trecho (não inclui ASR, TTS e rede).
 - **GPS simulado:** `scripts/simular_rota.py` move o caminhão por um trajeto reto de Jundiaí a Campinas, chamando `POST /rotas/{id}/posicao`. Em produção, a posição viria do GPS do celular do motorista pelo mesmo endpoint.
 - **Ligação ao recebedor (plano B):** na demo, o recebedor atende por uma página web (`/recebedor`) num canal Agora RTC, não por telefone. A ligação telefônica real (plano A, `POST /call`) está implementada e testada com mock, mas desligada: o time não tem número importado na Agora.
 - **Seed fictício:** a transportadora, o motorista, a placa, a NF, o recebedor e os telefones são inventados (`backend/app/seed.py`).

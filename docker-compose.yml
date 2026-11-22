@@ -25,6 +25,7 @@ services:
       TUNNEL_METRICS_URL: http://tunnel:2000
     ports:
       - "8000:8000"
+      - "8787:8000"  # porta do agent-server no docs/arquitetura-avisai.md
     volumes:
       - ./backend:/app
       - ./scripts:/scripts

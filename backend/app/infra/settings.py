@@ -1,4 +1,5 @@
 """Configuração. Em Docker vem do .env (env_file do compose)."""
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 FILLER_PADRAO = [
@@ -9,13 +10,12 @@ FILLER_PADRAO = [
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(extra="ignore", env_file=None)
-
     # Agora
     agora_app_id: str = ""
     agora_app_certificate: str = ""
-    agora_customer_id: str = ""
-    agora_customer_secret: str = ""
+    # aceita também os nomes do docs/arquitetura-avisai.md (AGORA_REST_KEY/SECRET)
+    agora_customer_id: str = Field("", validation_alias=AliasChoices("AGORA_CUSTOMER_ID", "AGORA_REST_KEY", "agora_customer_id"))
+    agora_customer_secret: str = Field("", validation_alias=AliasChoices("AGORA_CUSTOMER_SECRET", "AGORA_REST_SECRET", "agora_customer_secret"))
     agora_api_base: str = "https://api.agora.io/api/conversational-ai-agent"
     agora_enable_rtm: bool = True
     agora_asr_preset: str = "deepgram_nova_3"
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # Ligação ao recebedor: rtc (plano B, navegador) | sip (plano A, telefone)
     recebedor_modo: str = "rtc"
-    agora_sip_from_number: str = ""
+    agora_sip_from_number: str = Field("", validation_alias=AliasChoices("AGORA_SIP_FROM_NUMBER", "SIP_FROM_NUMBER", "agora_sip_from_number"))
     recebedor_telefone_e164: str = "+5519900000002"
 
     # LLM: custom = Agora chama o nosso /v1/chat/completions; agora = LLM gerenciado
@@ -54,11 +54,13 @@ class Settings(BaseSettings):
     estadia_aceleracao: float = 1
     estadia_valor_t_h: float = 2.50
     estadia_franquia_h: float = 5
-    ligar_recebedor_na_aproximacao: bool = False
+    ligar_recebedor_na_aproximacao: bool = True  # fluxo do repo de ideias: avisa o recebedor antes de chegar
     ligacao_timeout_s: float = 180
     ligacao_poll_s: float = 5
     encerrar_ligacao_apos_s: float = 20
     velocidade_padrao_kmh: float = 60
+    divergencia_gps_max_m: float = 500
+    model_config = SettingsConfigDict(extra="ignore", env_file=None, populate_by_name=True)
 
     def agora_configurada(self) -> bool:
         return bool(self.agora_app_id and self.agora_app_certificate)

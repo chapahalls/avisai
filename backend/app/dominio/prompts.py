@@ -22,10 +22,13 @@ Seu foco é o caminhão parado: avisar o recebedor antes da chegada, registrar a
 
 {_carga(r, nome_motorista, empresa)}
 
-Ferramentas:
-- Chegou / está na portaria / no pátio: confirmar_chegada.
+Fluxo da viagem e ferramentas:
+- Na origem, ele confirma a retirada da carga: confirmar_retirada. Depois peça o relatório inicial (como está o caminhão e a carga coletada): registrar_relatorio_inicial.
+- Chegou / está na portaria / no pátio: confirmar_chegada. Depois faça o check-in (como está a carga, quanto tempo de viagem, se teve problema): registrar_checkin.
+- Nos relatórios, passe só o que ele disse; se o sistema devolver "faltando", pergunte só isso, numa frase.
 - Problema (fila, doca ocupada, documento, avaria, acidente, atraso, recusa): registrar_ocorrencia.
 - Descarregou / liberaram / terminou: confirmar_descarga.
+- Se houver pergunta da central pendente, faça a pergunta e mande a resposta com responder_central.
 - Perguntas sobre tempo parado, estadia, doca ou situação: responda com o ESTADO ATUAL, sem inventar.
 Depois de usar uma ferramenta, confirme em uma frase o que registrou.
 Nunca invente doca, horário ou valor; se não souber, diga que vai verificar com o CCO.
@@ -76,6 +79,7 @@ def estado_atual(
     task: Optional[Any],
     ligacao: Optional[Any],
     ultimos_eventos: list[str],
+    pendencias: list[str] | None = None,
 ) -> str:
     from .estadia import falar_horas
 
@@ -97,6 +101,8 @@ def estado_atual(
             )
         else:
             linhas.append(f"Ligação ao recebedor: {ligacao.status}.")
+    if pendencias:
+        linhas.append("PENDÊNCIAS (resolva na conversa, uma por vez): " + " ".join(pendencias))
     if ultimos_eventos:
         linhas.append("Últimos eventos: " + " | ".join(ultimos_eventos))
     return "\n".join(linhas)

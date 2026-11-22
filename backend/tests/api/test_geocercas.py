@@ -5,7 +5,7 @@ from app.infra.db import sessao
 from app.infra.models import Estadia, TaskCCO
 from tests.helpers import eventos
 
-LONGE = {"lat": -23.1857, "lng": -46.8978, "velocidade_kmh": 60}
+LONGE = {"lat": -23.10, "lng": -46.95, "velocidade_kmh": 60}
 PERTO = {"lat": -22.9956, "lng": -47.0608, "velocidade_kmh": 60}
 DESTINO = {"lat": -22.9057, "lng": -47.0609, "velocidade_kmh": 5}
 

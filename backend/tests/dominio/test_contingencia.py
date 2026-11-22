@@ -99,3 +99,45 @@ def test_recebedor_nao_recebe_hoje():
 def test_recebedor_sem_resposta_agente_pergunta_de_novo():
     d = ct.decidir("recebedor", "alô? quem fala?", PARADO)
     assert d.ferramenta is None and "doca" in d.texto
+
+
+# ---------- fluxos do repo de ideias ----------
+NA_ORIGEM = Estado(nome="Carlos", destino="Mercadão Campinas", status_rota="na_origem", retirada_pendente=True)
+INICIAL = Estado(nome="Carlos", destino="Mercadão Campinas", status_rota="em_transito",
+                 inicial_faltantes=["estado_caminhao", "carga"])
+CHECKIN = Estado(nome="Carlos", destino="Mercadão Campinas", status_rota="no_destino",
+                 checkin_faltantes=["status_carga", "tempo_viagem", "problemas"])
+CENTRAL = Estado(nome="Carlos", destino="Mercadão Campinas", status_rota="em_transito", pergunta_central="Qual o número do lacre?")
+
+
+def test_confirma_retirada_na_origem():
+    d = ct.decidir("motorista", "confirmo, peguei a carga", NA_ORIGEM)
+    assert d.ferramenta == "confirmar_retirada" and "caminhão" in d.texto
+
+
+def test_relatorio_inicial_extrai_campos():
+    d = ct.decidir("motorista", "caminhão tá tudo certo, peguei 28 paletes", INICIAL)
+    assert d.ferramenta == "registrar_relatorio_inicial"
+    assert d.args["estado_caminhao"] and d.args["carga"]
+
+
+def test_checkin_parcial_pergunta_so_o_que_falta():
+    d = ct.decidir("motorista", "a carga tá inteira", CHECKIN)
+    assert d.ferramenta == "registrar_checkin" and d.args == {"status_carga": "ok"}
+    assert "tempo de viagem" in d.texto and "problema" in d.texto and "carga" not in d.texto.split("E ")[-1]
+
+
+def test_checkin_completo_numa_frase():
+    d = ct.decidir("motorista", "carga ok, foram três horas de viagem, sem problema", CHECKIN)
+    assert d.args == {"status_carga": "ok", "tempo_viagem": "três horas", "problemas": "nenhum"}
+    assert "completo" in d.texto
+
+
+def test_resposta_para_a_central():
+    d = ct.decidir("motorista", "o lacre é 4471", CENTRAL)
+    assert d.ferramenta == "responder_central" and d.args["resposta"] == "o lacre é 4471"
+
+
+def test_chegada_ja_pede_o_checkin():
+    d = ct.decidir("motorista", "cheguei", VAZIO)
+    assert "tempo de viagem" in d.texto

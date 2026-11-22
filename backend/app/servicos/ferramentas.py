@@ -4,7 +4,7 @@ from typing import Awaitable, Callable
 
 from ..dominio.enums import Papel
 from ..infra.models import SessaoAgente
-from . import ligacoes, tasks
+from . import central, ligacoes, reportes, tasks
 
 Handler = Callable[..., Awaitable[dict]]
 
@@ -36,12 +36,54 @@ async def _descarga(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
 
 
 async def _resposta_recebedor(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    recebe = args.get("recebe_hoje")
     await ligacoes.registrar_resposta(c, sa.id, args.get("previsao"), args.get("doca"), args.get("motivo"),
-                                      args.get("resumo") or fala)
+                                      args.get("resumo") or fala, recebe_hoje=None if recebe is None else bool(recebe))
     return {"ok": True, "mensagem": "Resposta registrada e repassada ao motorista e ao CCO."}
 
 
+async def _retirada(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    geo = await tasks.confirmar_retirada(c, sa.rota_id, transcricao=fala or args.get("observacao"))
+    return {"ok": True, "validado": geo.status == "validado",
+            "proximo": "peça o relatório inicial: como está o caminhão e a carga coletada"}
+
+
+async def _relatorio_inicial(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    return reportes.registrar(c, sa.rota_id, "inicial", args, fala)
+
+
+async def _checkin(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    return reportes.registrar(c, sa.rota_id, "checkin", args, fala)
+
+
+async def _responder_central(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    sol = central.responder(c, sa.rota_id, args.get("resposta") or fala, transcricao=fala)
+    return {"ok": bool(sol), "mensagem": "Resposta enviada à central." if sol else "Não há pergunta da central pendente."}
+
+
 REGISTRO: dict[str, Ferramenta] = {
+    "confirmar_retirada": Ferramenta(
+        Papel.MOTORISTA, "Motorista confirmou por voz a retirada da carga na origem.",
+        {"type": "object", "properties": {"observacao": {"type": "string"}}},
+        _retirada),
+    "registrar_relatorio_inicial": Ferramenta(
+        Papel.MOTORISTA, "Relatório inicial da viagem. Passe só os campos que o motorista disse; o sistema devolve o que falta perguntar.",
+        {"type": "object", "properties": {
+            "estado_caminhao": {"type": "string", "description": "Como está o caminhão."},
+            "carga": {"type": "string", "description": "Carga coletada."}}},
+        _relatorio_inicial),
+    "registrar_checkin": Ferramenta(
+        Papel.MOTORISTA, "Check-in na chegada. Passe só os campos que o motorista disse; o sistema devolve o que falta perguntar.",
+        {"type": "object", "properties": {
+            "status_carga": {"type": "string", "description": "Estado final da carga."},
+            "tempo_viagem": {"type": "string", "description": "Tempo de viagem."},
+            "problemas": {"type": "string", "description": "Problemas ou ocorrências; 'nenhum' se não houve."}}},
+        _checkin),
+    "responder_central": Ferramenta(
+        Papel.MOTORISTA, "Envia à central a resposta do motorista para a pergunta pendente da central.",
+        {"type": "object", "properties": {"resposta": {"type": "string", "description": "Resposta fiel e curta."}},
+         "required": ["resposta"]},
+        _responder_central),
     "confirmar_chegada": Ferramenta(
         Papel.MOTORISTA, "Motorista confirmou por voz que chegou ao destino (portaria, pátio, recebedor).",
         {"type": "object", "properties": {"observacao": {"type": "string", "description": "O que o motorista disse, resumido."}}},
@@ -63,7 +105,8 @@ REGISTRO: dict[str, Ferramenta] = {
             "previsao": {"type": "string", "description": "Ex.: 'em 40 minutos', 'às 15h', 'não recebe hoje'."},
             "doca": {"type": "string"},
             "motivo": {"type": "string", "description": "Motivo da espera ou pedido de documento."},
-            "resumo": {"type": "string", "description": "Resumo fiel, em uma frase, do que o recebedor disse."}},
+            "resumo": {"type": "string", "description": "Resumo fiel, em uma frase, do que o recebedor disse."},
+            "recebe_hoje": {"type": "boolean", "description": "false se o recebedor disse que não recebe hoje."}},
          "required": ["resumo"]},
         _resposta_recebedor),
 }

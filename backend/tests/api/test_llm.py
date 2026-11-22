@@ -101,8 +101,9 @@ async def test_estado_vivo_vai_para_o_llm_sem_campos_da_agora(client, fake_llm):
     msgs = fake_llm.recebidas[-1]["mensagens"]
     assert any(m["role"] == "system" and "ESTADO ATUAL" in (m["content"] or "") for m in msgs)
     assert all("turn_id" not in m and "timestamp" not in m for m in msgs)
-    assert {f["function"]["name"] for f in fake_llm.recebidas[-1]["ferramentas"]} == {
-        "confirmar_chegada", "registrar_ocorrencia", "confirmar_descarga"}
+    assert {f["function"]["name"] for f in fake_llm.recebidas[-1]["ferramentas"]} >= {
+        "confirmar_chegada", "registrar_ocorrencia", "confirmar_descarga", "confirmar_retirada",
+        "registrar_relatorio_inicial", "registrar_checkin", "responder_central"}
 
 
 async def test_texto_sai_em_varios_chunks(client, fake_llm):

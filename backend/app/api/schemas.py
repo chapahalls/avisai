@@ -43,6 +43,11 @@ class Posicao(BaseModel):
     lng: float
     velocidade_kmh: Optional[float] = None
     precisao_m: Optional[float] = None
+    fonte: str = "celular"  # celular (GPS do app) | rastreador (GPS do caminhão)
+
+
+class NovaSolicitacao(BaseModel):
+    pergunta: str
 
 
 class PosicaoOut(BaseModel):
@@ -73,3 +78,14 @@ class EventoStream(BaseModel):
     timestamp: datetime
     mensagem: str
     dados: dict[str, Any]
+
+
+class DomainEventIn(BaseModel):
+    """Evento do outbox do app (docs/arquitetura-avisai.md, seção 7)."""
+    id: Optional[str] = None
+    idempotencyKey: str
+    tripId: str
+    type: str
+    occurredAt: Optional[str] = None
+    source: str = "driver"
+    payload: dict[str, Any] = {}

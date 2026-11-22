@@ -138,6 +138,9 @@ async def ligar(c, rota_id: int, motivo: str, task_id: Optional[int] = None) -> 
         f"[{'telefone' if modo == ModoLigacao.SIP else 'canal RTC, plano B'}].",
         rota_id, ligacao_id=lig.id, modo=modo, motivo=motivo, canal=lig.canal, **extra,
     )
+    if motivo == "aproximacao":  # ReceiverNotified: condição para a estadia (decisão do TJMT)
+        c.eventos.registrar(TipoEvento.AVISO_RECEBEDOR, f"Recebedor avisado antes da chegada (previsão {int(r.eta_min or 0)} min).",
+                            rota_id, ligacao_id=lig.id, eta_min=r.eta_min)
     c.em_segundo_plano(f"vigia-lig-{lig.id}", _vigiar(c, lig.id))
     return lig
 
@@ -190,8 +193,19 @@ def _frase_motorista(previsao: Optional[str], doca: Optional[str], motivo: Optio
     return texto
 
 
+def regra_nao_recebe(rota_id: int) -> str:
+    from sqlmodel import select
+
+    from ..infra.models import RegraEscalonamento, Rota
+
+    with sessao() as s:
+        r = s.get(Rota, rota_id)
+        regra = s.exec(select(RegraEscalonamento).where(RegraEscalonamento.empresa_id == r.empresa_id)).first()
+    return regra.acao_nao_recebe if regra else "Aguardar orientação do CCO."
+
+
 async def registrar_resposta(c, sessao_id: int, previsao: Optional[str], doca: Optional[str],
-                             motivo: Optional[str], resumo: str) -> LigacaoRecebedor:
+                             motivo: Optional[str], resumo: str, recebe_hoje: Optional[bool] = None) -> LigacaoRecebedor:
     with sessao() as s:
         sa = s.get(SessaoAgente, sessao_id)
         lig = s.get(LigacaoRecebedor, sa.ligacao_id)
@@ -211,8 +225,14 @@ async def registrar_resposta(c, sessao_id: int, previsao: Optional[str], doca: O
                         ligacao_id=lig.id, task_id=lig.task_id, previsao=previsao, doca=doca, motivo=motivo)
     if lig.task_id:
         c.eventos.publicar("task", {"task": consultas_task(lig.task_id)}, lig.rota_id)
-    entregue = await sessoes.VozAgora(c).falar_motorista(
-        lig.rota_id, _frase_motorista(previsao, doca, motivo, resumo), prioridade="INTERRUPT")
+    if recebe_hoje is False:
+        regra = regra_nao_recebe(lig.rota_id)
+        c.eventos.registrar(TipoEvento.NAO_RECEBE_HOJE, f"Recebedor não recebe hoje ({previsao or resumo}). Regra: {regra}",
+                            lig.rota_id, ligacao_id=lig.id, previsao=previsao, regra=regra)
+        texto = f"O recebimento disse que hoje não recebe, {previsao or 'sem previsão'}. Pela regra da transportadora: {regra}"
+    else:
+        texto = _frase_motorista(previsao, doca, motivo, resumo)
+    entregue = await sessoes.VozAgora(c).falar_motorista(lig.rota_id, texto, prioridade="INTERRUPT")
     if entregue:
         _atualizar(LigacaoRecebedor, lig.id, enviada_motorista_em=c.relogio.agora())
     c.em_segundo_plano(f"encerrar-lig-{lig.id}", _encerrar_depois(c, sessao_id, c.settings.encerrar_ligacao_apos_s))

@@ -3,11 +3,11 @@ from fastapi import APIRouter, Depends
 from sqlmodel import select
 
 from ..infra.db import sessao
-from ..infra.models import (Estadia, Evento, EventoGeo, LigacaoRecebedor, Motorista, Ocorrencia, Rota,
-                            SessaoAgente, TaskCCO)
-from ..servicos import consultas, rotas, sessoes, tasks
+from ..infra.models import (Estadia, Evento, EventoGeo, LigacaoRecebedor, Motorista, Ocorrencia, Reporte, Rota,
+                            SessaoAgente, SolicitacaoCentral, TaskCCO)
+from ..servicos import central, consultas, rotas, sessoes, tasks
 from .deps import c, erro_http
-from .schemas import Descarga, Posicao, PosicaoOut
+from .schemas import Descarga, NovaSolicitacao, Posicao, PosicaoOut
 
 router = APIRouter(tags=["rotas"])
 
@@ -38,9 +38,9 @@ def obter(rota_id: int):
 
 @router.post("/rotas/{rota_id}/posicao", response_model=PosicaoOut)
 async def posicao(rota_id: int, body: Posicao, ct=Depends(c)):
-    """GPS do celular (na demo, o simulador). Dispara as geocercas de aproximação e chegada."""
+    """GPS do celular (fonte=celular, dispara as geocercas) ou do rastreador do caminhão (fonte=rastreador, prova)."""
     try:
-        return await rotas.registrar_posicao(ct, rota_id, body.lat, body.lng, body.velocidade_kmh, body.precisao_m)
+        return await rotas.registrar_posicao(ct, rota_id, body.lat, body.lng, body.velocidade_kmh, body.precisao_m, body.fonte)
     except Exception as e:  # noqa: BLE001
         raise erro_http(e)
 
@@ -72,7 +72,7 @@ async def reset(rota_id: int, ct=Depends(c)):
         r = s.get(Rota, rota_id)
         if not r:
             raise erro_http(consultas.NaoEncontrado("rota não existe"))
-        for modelo in (Evento, EventoGeo, Estadia, Ocorrencia):
+        for modelo in (Evento, EventoGeo, Estadia, Ocorrencia, Reporte, SolicitacaoCentral):
             for x in s.exec(select(modelo).where(modelo.rota_id == rota_id)).all():
                 s.delete(x)
         for x in s.exec(select(SessaoAgente).where(SessaoAgente.rota_id == rota_id, SessaoAgente.papel == "recebedor")).all():
@@ -83,7 +83,22 @@ async def reset(rota_id: int, ct=Depends(c)):
                 s.delete(x)
             s.commit()
         r.status, r.ultima_lat, r.ultima_lng, r.distancia_m, r.eta_min = "planejada", None, None, None, None
+        r.rastreador_lat = r.rastreador_lng = r.rastreador_em = None
         s.add(r)
         s.commit()
     ct.eventos.publicar("reset", {"rota_id": rota_id}, rota_id)
     return {"ok": True}
+
+
+@router.post("/rotas/{rota_id}/solicitacoes")
+async def nova_solicitacao(rota_id: int, body: NovaSolicitacao, ct=Depends(c)):
+    """Pedido da central: o agente pergunta ao motorista e a resposta volta estruturada."""
+    try:
+        return await central.perguntar(ct, rota_id, body.pergunta)
+    except Exception as e:  # noqa: BLE001
+        raise erro_http(e)
+
+
+@router.get("/rotas/{rota_id}/solicitacoes")
+def solicitacoes(rota_id: int):
+    return central.listar(rota_id)

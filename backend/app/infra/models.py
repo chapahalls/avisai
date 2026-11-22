@@ -23,6 +23,7 @@ class RegraEscalonamento(SQLModel, table=True):
     intervalo_s: float = 20
     niveis: list = Field(default_factory=lambda: ["push", "painel", "ligacao"], sa_column=Column(JSON))
     acao_final: str = "ligar_recebedor"
+    acao_nao_recebe: str = "Aguardar no pátio do recebedor e reagendar a descarga para amanhã às 8h. O CCO decide se o caminhão volta."
 
 
 class Motorista(SQLModel, table=True):
@@ -55,6 +56,10 @@ class Rota(SQLModel, table=True):
     recebedor_telefone_e164: str = ""
     aproximacao_min: float = 15
     raio_chegada_m: float = 300
+    raio_origem_m: float = 300
+    rastreador_lat: Optional[float] = None  # GPS do caminhão (simulado na demo)
+    rastreador_lng: Optional[float] = None
+    rastreador_em: Optional[datetime] = None
     ultima_lat: Optional[float] = None
     ultima_lng: Optional[float] = None
     ultima_posicao_em: Optional[datetime] = None
@@ -82,6 +87,9 @@ class EventoGeo(SQLModel, table=True):
     precisao_m: Optional[float] = None
     timestamp: datetime = Field(default_factory=agora)
     distancia_m: Optional[float] = None
+    caminhao_lat: Optional[float] = None
+    caminhao_lng: Optional[float] = None
+    divergencia_m: Optional[float] = None  # celular × rastreador
     confirmacao_voz_transcricao: Optional[str] = None
     confirmacao_voz_em: Optional[datetime] = None
     status: str = "nao_validado"  # validado | nao_validado
@@ -160,7 +168,35 @@ class Evento(SQLModel, table=True):
     """Linha do tempo: tudo o que o CCO vê no stream e o que vira prova."""
     id: Optional[int] = Field(default=None, primary_key=True)
     rota_id: Optional[int] = None
+    idempotency_key: Optional[str] = Field(default=None, unique=True, index=True)  # outbox do app
+    source: str = "system"  # driver | agent | cco | system
     tipo: str
     mensagem: str
     dados: dict = Field(default_factory=dict, sa_column=Column(JSON))
     timestamp: datetime = Field(default_factory=agora)
+
+
+class Reporte(SQLModel, table=True):
+    """Relatório por voz (inicial ou check-in) com validação de completude."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    rota_id: int = Field(foreign_key="rota.id")
+    tipo: str  # inicial | checkin
+    campos: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    faltantes: list = Field(default_factory=list, sa_column=Column(JSON))
+    completo: bool = False
+    perguntas_complemento: int = 0
+    transcricao: list = Field(default_factory=list, sa_column=Column(JSON))
+    criado_em: datetime = Field(default_factory=agora)
+    completo_em: Optional[datetime] = None
+
+
+class SolicitacaoCentral(SQLModel, table=True):
+    """Pedido da central: o agente pergunta ao motorista e devolve a resposta estruturada."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    rota_id: int = Field(foreign_key="rota.id")
+    pergunta: str
+    resposta: Optional[str] = None
+    status: str = "pendente"  # pendente | perguntada | respondida
+    criada_em: datetime = Field(default_factory=agora)
+    respondida_em: Optional[datetime] = None
+    transcricao: Optional[str] = None

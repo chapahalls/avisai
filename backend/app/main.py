@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .api import agentes, cco, ligacoes, llm, rotas
+from .api import agentes, cco, compat, ligacoes, llm, rotas
 from .infra import container as ct
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -31,6 +31,7 @@ app.include_router(ligacoes.router)
 app.include_router(rotas.router)
 app.include_router(llm.router)
 app.include_router(cco.router)
+app.include_router(compat.router)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
