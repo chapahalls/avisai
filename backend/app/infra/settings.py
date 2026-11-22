@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     # Banco
     database_url: str = "postgresql+psycopg://avisai:avisai@db:5432/avisai"
 
+    # Arquivos da viagem: conteúdo persistente, separado dos documentos fiscais fictícios.
+    arquivos_dir: str = "data/arquivos"
+    arquivos_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0, le=100 * 1024 * 1024)
+
     # Ritmo da demo
     cco_intervalo_s: float = 20
     cco_max_tentativas: int = 3

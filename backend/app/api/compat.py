@@ -20,9 +20,9 @@ from ..infra.db import sessao
 from ..infra.eventos import serial
 from ..infra.models import Evento, SessaoAgente
 from ..integracoes import tokens
-from ..servicos import consultas, ligacoes, metricas, publicacao, reportes, sessoes, tasks
+from ..servicos import consultas, ligacoes, metricas, publicacao, reportes, sessoes, tasks, usuarios
 from .deps import c, erro_http
-from .schemas import DomainEventIn
+from .schemas import DomainEventIn, SsoOut
 
 router = APIRouter(tags=["compat (docs/arquitetura-avisai.md)"])
 
@@ -44,6 +44,7 @@ TIPO_DOMINIO = {
     "descarga": "UnloadConfirmed",
     "rota_atribuida": "RouteAssigned",
     "pergunta_documento": "DocumentQuestionAnswered",
+    "arquivo_adicionado": "TripFileAdded",
     "rota_publicada": "RoutePublished",
     # extensões (fora da lista do doc)
     "sessao_iniciada": "AgentSessionStarted",
@@ -60,7 +61,7 @@ TIPO_DOMINIO = {
     "fala_recebedor": "VoiceTranscript",
     "fala_agente": "VoiceTranscript",
 }
-FONTE = {"rota_publicada": "cco", "rota_atribuida": "cco", "fala_motorista": "driver", "fala_recebedor": "agent", "fala_agente": "agent", "task_confirmada": "cco",
+FONTE = {"arquivo_adicionado": "cco", "rota_publicada": "cco", "rota_atribuida": "cco", "fala_motorista": "driver", "fala_recebedor": "agent", "fala_agente": "agent", "task_confirmada": "cco",
          "pedido_central": "cco", "aproximacao": "system", "chegada": "system", "retirada_detectada": "system"}
 
 
@@ -246,16 +247,11 @@ class SsoIn(BaseModel):
     email: Optional[str] = None
 
 
-@router.post("/auth/sso")
+@router.post("/auth/sso", response_model=SsoOut)
 def auth_sso(body: SsoIn = SsoIn()):
-    """SSO mock: token fake. Papel 'cco' se o e-mail tiver 'cco'; senão é o motorista com esse e-mail
-    (ou o primeiro cadastrado), com a rota atual atribuída a ele."""
-    email = (body.email or "carlos@rotasul.test").lower()
-    token = f"mock-{uuid.uuid4().hex}"
-    if "cco" in email:
-        return {"token": token, "user": {"id": email, "email": email, "role": "cco", "name": "Ana (CCO)",
-                                         "driverId": None, "tripId": None}}
-    m = publicacao.motorista_por_email(email) or next(iter(publicacao.motoristas()), None)
-    atual = publicacao.rota_atual(m.id) if m else None
-    return {"token": token, "user": {"id": email, "email": email, "role": "driver", "name": m.nome if m else email,
-                                     "driverId": m.id if m else None, "tripId": str(atual.id) if atual else None}}
+    """Login mock: e-mail cadastrado seleciona um perfil persistido e recebe token fictício."""
+    try:
+        profile = usuarios.por_email(body.email if body.email is not None else "carlos@rotasul.test")
+    except Exception as error:
+        raise erro_http(error)
+    return {"token": f"mock-{uuid.uuid4().hex}", "user": profile}

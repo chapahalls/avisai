@@ -49,7 +49,7 @@ async def fluxo(ct, rota_id: Optional[int] = None, intervalo_contador: float = 1
     """Fonte comum do SSE e do WS: snapshot, depois eventos publicados e o contador da estadia.
 
     Com motorista_id: acompanha as rotas do motorista e recebe as atribuições novas (RouteAssigned)."""
-    if motorista_id is not None and rota_id is None:
+    if motorista_id is not None:
         from ..servicos.publicacao import rota_atual
 
         atual = rota_atual(motorista_id)
@@ -58,13 +58,23 @@ async def fluxo(ct, rota_id: Optional[int] = None, intervalo_contador: float = 1
         rota_id_snapshot = rota_id
     a = ct.eventos.assinar(None if motorista_id is not None else rota_id, motorista_id)
     try:
-        yield "snapshot", json.loads(dumps(snapshot(ct, rota_id_snapshot)))
+        initial = ({"rotas": [], "tasks": [], "estadias": [], "ligacoes": [], "ocorrencias": [], "eventos": []}
+                   if motorista_id is not None and rota_id_snapshot is None else snapshot(ct, rota_id_snapshot))
+        yield "snapshot", json.loads(dumps(initial))
         while True:
             try:
                 tipo, msg = await asyncio.wait_for(a.fila.get(), timeout=intervalo_contador)
                 yield tipo, json.loads(msg)
             except asyncio.TimeoutError:
-                yield "contador", json.loads(dumps(_contador(ct, rota_id_snapshot)))
+                if motorista_id is not None:
+                    # Uma atribuição nova altera a viagem atual sem exigir reconexão.
+                    from ..servicos.publicacao import rota_atual
+
+                    atual = rota_atual(motorista_id)
+                    rota_id_snapshot = atual.id if atual else None
+                contador = ({"estadias": []} if motorista_id is not None and rota_id_snapshot is None
+                            else _contador(ct, rota_id_snapshot))
+                yield "contador", json.loads(dumps(contador))
     finally:
         ct.eventos.cancelar(a)
 

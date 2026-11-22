@@ -133,7 +133,10 @@ def listar_motoristas():
 
 @router.post("/motoristas")
 def criar_motorista(body: NovoMotorista):
-    return publicacao.criar_motorista(body.nome, body.telefone_e164, (body.email or "").lower() or None, body.empresa_id)
+    try:
+        return publicacao.criar_motorista(body.nome, body.telefone_e164, body.email, body.empresa_id)
+    except Exception as error:
+        raise erro_http(error)
 
 
 @router.get("/motoristas/{motorista_id}/rota-atual")

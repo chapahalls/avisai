@@ -7,7 +7,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .api import agentes, cco, compat, ligacoes, llm, rotas
+from .api import agentes, arquivos, cco, compat, ligacoes, llm, rotas, usuarios
+from .infra.upload_limit import UploadLimitMiddleware
 from .infra import container as ct
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -26,6 +27,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AvisAI API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(UploadLimitMiddleware)
+app.include_router(arquivos.router)
+app.include_router(usuarios.router)
 app.include_router(agentes.router)
 app.include_router(ligacoes.router)
 app.include_router(rotas.router)

@@ -1,11 +1,13 @@
 """Transportadora publica rotas e atribui motoristas (evento RouteAssigned do contrato do doc)."""
 from typing import Optional
 
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from ..dominio.enums import StatusRota, TipoEvento
 from ..infra.db import sessao
-from ..infra.models import Motorista, Rota
+from ..infra.models import Motorista, Rota, Usuario
 from . import consultas
 from .sessoes import VozAgora
 
@@ -16,11 +18,24 @@ def motoristas() -> list[Motorista]:
 
 
 def criar_motorista(nome: str, telefone_e164: Optional[str], email: Optional[str], empresa_id: int = 1) -> Motorista:
+    from .usuarios import ConflitoUsuario, garantir_motorista, normalizar_email
+
+    normalized = normalizar_email(email) if email else None
     with sessao() as s:
-        m = Motorista(empresa_id=empresa_id, nome=nome, telefone_e164=telefone_e164, email=email)
-        s.add(m)
-        s.commit()
-        s.refresh(m)
+        if normalized and (
+            s.exec(select(Motorista).where(func.lower(func.trim(Motorista.email)) == normalized)).first()
+            or s.exec(select(Usuario).where(Usuario.email == normalized)).first()
+        ):
+            raise ConflitoUsuario("E-mail já cadastrado")
+        m = Motorista(empresa_id=empresa_id, nome=nome, telefone_e164=telefone_e164, email=normalized)
+        try:
+            s.add(m)
+            s.flush()
+            garantir_motorista(s, m)
+            s.commit()
+        except IntegrityError as error:
+            s.rollback()
+            raise ConflitoUsuario("Não foi possível criar o cadastro com este e-mail") from error
         return m
 
 

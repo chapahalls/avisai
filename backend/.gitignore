@@ -1,0 +1,2 @@
+data/arquivos/*
+!data/arquivos/.gitkeep

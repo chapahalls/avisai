@@ -1,6 +1,6 @@
 """Contrato com o front (aparece no /openapi.json; gere tipos com openapi-typescript)."""
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -129,3 +129,33 @@ class NovoMotorista(BaseModel):
     telefone_e164: Optional[str] = Field(default=None, pattern=E164)
     email: Optional[str] = None
     empresa_id: int = 1
+
+
+CategoriaArquivo = Literal["documento", "nota_fiscal", "comprovante", "imagem", "outro"]
+
+
+class ArquivoRotaOut(BaseModel):
+    id: int
+    rota_id: int
+    nome_original: str
+    tipo_mime: str
+    tamanho_bytes: int
+    categoria: CategoriaArquivo
+    descricao: Optional[str]
+    criado_em: datetime
+    url_download: str
+
+
+
+class PerfilUsuarioOut(BaseModel):
+    id: str
+    email: str
+    name: str
+    role: Literal["cco", "driver"]
+    driverId: Optional[int]
+    tripId: Optional[str]
+
+
+class SsoOut(BaseModel):
+    token: str
+    user: PerfilUsuarioOut

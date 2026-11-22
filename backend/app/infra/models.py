@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, CheckConstraint, Column
 from sqlmodel import Field, SQLModel
 
 
@@ -32,6 +32,23 @@ class Motorista(SQLModel, table=True):
     nome: str
     telefone_e164: Optional[str] = None
     email: Optional[str] = Field(default=None, index=True)  # login SSO (mock)
+
+
+class Usuario(SQLModel, table=True):
+    """Perfil persistido da demo; não representa autenticação real."""
+    __table_args__ = (
+        CheckConstraint(
+            "(papel = 'cco' AND motorista_id IS NULL AND nome IS NOT NULL) OR "
+            "(papel = 'driver' AND motorista_id IS NOT NULL AND nome IS NULL)",
+            name="ck_usuario_papel_identidade",
+        ),
+    )
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(unique=True, index=True)
+    # O nome do motorista tem uma única fonte: Motorista.nome.
+    nome: Optional[str] = None
+    papel: str
+    motorista_id: Optional[int] = Field(default=None, foreign_key="motorista.id", unique=True)
 
 
 class Rota(SQLModel, table=True):
@@ -68,6 +85,20 @@ class Rota(SQLModel, table=True):
     ultima_posicao_em: Optional[datetime] = None
     eta_min: Optional[float] = None
     distancia_m: Optional[float] = None
+
+
+class ArquivoRota(SQLModel, table=True):
+    """Anexo imutável da viagem; a chave interna nunca é fornecida pelo cliente."""
+    __tablename__ = "arquivo_rota"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    rota_id: int = Field(foreign_key="rota.id", index=True)
+    nome_original: str
+    tipo_mime: str
+    tamanho_bytes: int
+    categoria: str = "documento"
+    descricao: Optional[str] = None
+    chave_storage: str = Field(unique=True)
+    criado_em: datetime = Field(default_factory=agora)
 
 
 class Ocorrencia(SQLModel, table=True):

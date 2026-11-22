@@ -16,7 +16,7 @@ NOVA = {
 }
 
 
-async def _motorista(client, nome="Marina Souza", email="marina@rotasul.test"):
+async def _motorista(client, nome="Marina Souza", email="marina.fixture@rotasul.test"):
     return (await client.post("/motoristas", json={"nome": nome, "telefone_e164": "+5511900000009", "email": email})).json()
 
 
@@ -73,7 +73,7 @@ async def test_rota_atual_do_motorista(client):
 async def test_sso_e_api_route_trazem_a_rota_do_motorista(client):
     m = await _motorista(client)
     rota = (await client.post("/rotas", json={**NOVA, "motorista_id": m["id"]})).json()
-    sso = (await client.post("/auth/sso", json={"email": "marina@rotasul.test"})).json()
+    sso = (await client.post("/auth/sso", json={"email": m["email"]})).json()
     assert sso["user"]["driverId"] == m["id"] and sso["user"]["tripId"] == str(rota["id"])
     r = (await client.get("/api/route", params={"driverId": m["id"]})).json()
     assert r["tripId"] == str(rota["id"]) and r["destination"]["name"] == "Atacado Sorocaba"
@@ -101,3 +101,44 @@ async def test_lista_de_motoristas(client):
     await _motorista(client)
     nomes = [m["nome"] for m in (await client.get("/motoristas")).json()]
     assert "Carlos Andrade" in nomes and "Marina Souza" in nomes
+
+
+
+async def test_ws_motorista_sem_viagem_recebe_estado_vazio(client, container):
+    m = await _motorista(client)
+    gen = cco.fluxo(container, motorista_id=m["id"], intervalo_contador=0.01)
+    channel, initial = await gen.__anext__()
+    assert channel == "snapshot" and all(items == [] for items in initial.values())
+    channel, counter = await asyncio.wait_for(gen.__anext__(), 2)
+    assert channel == "contador" and counter["estadias"] == []
+    await gen.aclose()
+
+
+async def test_contador_motorista_acompanha_nova_atribuicao(client, container):
+    from app.infra.db import sessao
+    from app.infra.models import Estadia
+
+    m = await _motorista(client)
+    gen = cco.fluxo(container, motorista_id=m["id"], intervalo_contador=0.01)
+    await gen.__anext__()
+    rota = (await client.post("/rotas", json={**NOVA, "motorista_id": m["id"]})).json()
+    with sessao() as s:
+        s.add(Estadia(rota_id=rota["id"], capacidade_t=18))
+        s.commit()
+    while True:
+        channel, data = await asyncio.wait_for(gen.__anext__(), 2)
+        if channel == "contador":
+            break
+    assert [item["rota_id"] for item in data["estadias"]] == [rota["id"]]
+    await gen.aclose()
+
+
+async def test_reatribuicao_retira_rota_do_stream_anterior(client, container):
+    from app.dominio.enums import TipoEvento
+
+    m = await _motorista(client)
+    subscription = container.eventos.assinar(motorista_id=1)
+    await client.post("/rotas/1/atribuir", json={"motorista_id": m["id"]})
+    container.eventos.registrar(TipoEvento.OCORRENCIA, "Mensagem para novo motorista", 1)
+    assert subscription.fila.empty()
+    container.eventos.cancelar(subscription)

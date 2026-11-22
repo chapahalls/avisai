@@ -28,6 +28,7 @@ services:
       - "8787:8000"  # porta do agent-server no docs/arquitetura-avisai.md
     volumes:
       - ./backend:/app
+      - ./backend/data/arquivos:/app/data/arquivos
       - ./scripts:/scripts
     command: sh -c "alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --timeout-graceful-shutdown 2"
     depends_on:

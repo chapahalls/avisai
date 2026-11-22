@@ -38,7 +38,18 @@ class Assinatura:
             if motorista_id == self.motorista_id and rota_id is not None:
                 self.rotas.add(rota_id)  # rota recém-atribuída passa a ser acompanhada
                 return True
-            return rota_id in self.rotas
+            if rota_id not in self.rotas:
+                return False
+            # Uma reatribuição retira a viagem do filtro anterior. Isso é escopo
+            # operacional do stream, não autenticação por motorista_id.
+            from .models import Rota
+
+            with sessao() as s:
+                rota = s.get(Rota, rota_id)
+                owned = rota is not None and rota.motorista_id == self.motorista_id
+            if not owned:
+                self.rotas.discard(rota_id)
+            return owned
         return self.rota_id is None or rota_id is None or rota_id == self.rota_id
 
 
