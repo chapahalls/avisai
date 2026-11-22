@@ -8,7 +8,15 @@ Copiloto de voz para transportadoras, focado no **caminhão parado**:
 
 Time Chapahalls (3 pessoas: Jeferson, Henry e Lucas) · hackathon UNMUTE by Agora · backend e infra: Lucas.
 
-**Versão entregue: tag [`v1.0-entrega`](https://github.com/chapahalls/avisai/releases/tag/v1.0-entrega).** Se houver correção depois, ela sai numa tag nova (`v1.1-entrega`), e a tag mais recente `v*-entrega` é a versão entregue. Licença: [MIT](LICENSE).
+**Versão entregue: tag [`v1.1-entrega`](https://github.com/chapahalls/avisai/releases/tag/v1.1-entrega)** (a `v1.0-entrega` foi substituída). Se houver nova correção, ela sai numa tag nova, e a tag `v*-entrega` mais recente é a versão entregue. Licença: [MIT](LICENSE).
+
+**Repositórios do projeto** (todos públicos):
+| Repo | O quê | Responsável |
+|---|---|---|
+| [chapahalls/avisai](https://github.com/chapahalls/avisai) | este backend: API, agente de voz (Agora ConvoAI), regras, infra Docker | Lucas |
+| [chapahalls/avisai-mobile](https://github.com/chapahalls/avisai-mobile) | app do motorista (React Native / Expo): voz pela Agora, mapa, sincronização com o backend | Jeferson |
+| [chapahalls/avisai-web](https://github.com/chapahalls/avisai-web) | painel do CCO (React + Vite): frota, Tasks, ligações, indicadores, publicação de rotas | Henry |
+| [chapahalls/chapahalls-ideas](https://github.com/chapahalls/chapahalls-ideas) | pesquisa, decisões de produto e plano de arquitetura | time |
 
 Toda a voz roda na **Agora Conversational AI**. O áudio vai do aparelho direto para a nuvem da Agora; este backend é o plano de controle: tokens, `/join`, `/leave`, `/speak` e `/call`, o LLM próprio com ferramentas e as regras de negócio.
 
