@@ -112,6 +112,7 @@ class LigacaoRecebedor(SQLModel, table=True):
     modo: str = "rtc"  # sip (plano A) | rtc (plano B)
     numero: str = ""
     canal: Optional[str] = None
+    sessao_id: Optional[int] = None  # SessaoAgente do agente que liga
     agent_id: Optional[str] = None
     # chamando | em_andamento | respondida | nao_atendida | falhou
     status: str = "chamando"
