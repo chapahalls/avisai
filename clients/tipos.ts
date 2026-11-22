@@ -4,14 +4,16 @@
  */
 
 export type StatusTask = "pendente" | "confirmada" | "escalada_recebedor" | "concluida";
-export type StatusRota = "planejada" | "em_transito" | "aproximando" | "no_destino" | "descarregada";
+export type StatusRota = "publicada" | "planejada" | "na_origem" | "em_transito" | "aproximando" | "no_destino" | "descarregada";
 export type StatusLigacao = "chamando" | "em_andamento" | "respondida" | "nao_atendida" | "falhou";
 
 export type TipoEvento =
   | "sessao_iniciada" | "aproximacao" | "chegada" | "chegada_confirmada_voz"
   | "notificacao_cco" | "escalada_recebedor" | "task_confirmada"
   | "ligacao_recebedor" | "ligacao_falhou" | "fallback_plano_b" | "ligacao_nao_atendida" | "resposta_recebedor"
-  | "ocorrencia" | "descarga" | "fala_motorista" | "fala_recebedor" | "fala_agente";
+  | "ocorrencia" | "descarga" | "fala_motorista" | "fala_recebedor" | "fala_agente"
+  | "retirada_detectada" | "retirada" | "relatorio" | "campo_faltante" | "task_criada" | "aviso_recebedor"
+  | "nao_recebe_hoje" | "pedido_central" | "resposta_central" | "divergencia_gps" | "rota_publicada" | "rota_atribuida";
 
 export interface Sessao {
   id: number;

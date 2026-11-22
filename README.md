@@ -95,6 +95,15 @@ Extensões fora da lista do doc: `AgentSessionStarted`, `PickupGeofenceEntered`,
 
 As variáveis do doc também valem: `AGORA_REST_KEY` e `AGORA_REST_SECRET` (equivalem a `AGORA_CUSTOMER_*`) e `SIP_FROM_NUMBER`. Além do polling, há **SSE** (`/cco/stream`) e **WebSocket** (`/ws`), com entrega instantânea.
 
+### Publicação de rota e vínculo com o motorista
+1. **CCO publica a rota:** `POST /rotas` com `origem`, `destino`, `recebedor {empresa, nome, telefone_e164}`, `carga_t`, `placa`, `nota_fiscal`, `janela_descarga` e, opcionalmente, `motorista_id`. O trajeto é simulado em linha reta, e a rota fica `publicada`.
+2. **Atribui ao motorista:** `POST /rotas/{id}/atribuir {motorista_id}`. A rota passa a `planejada`, sai o evento `rota_atribuida` (**`RouteAssigned`** no `/events`, `source: cco`) e, se o motorista estiver com o agente aberto, ele ouve "Rota nova: …".
+3. **App do motorista:**
+   - `POST /auth/sso {email}` devolve `driverId` e o `tripId` da rota atual;
+   - `GET /api/route?driverId=` (ou `GET /motoristas/{id}/rota-atual`) traz a rota;
+   - o WebSocket `/ws?motorista_id=` recebe as atribuições novas na hora (no hook RN: `motoristaId` e `onRotaAtribuida`).
+4. **Motoristas:** `GET /motoristas` e `POST /motoristas {nome, telefone_e164, email}`. No seed, o Carlos é `carlos@rotasul.test`.
+
 ### Fluxos de operação cobertos (doc, seções 5.5 e 6.3)
 1. **Retirada na origem:** a geocerca da origem faz o agente perguntar "Confirma a retirada da carga?". A confirmação por voz (`confirmar_retirada`) valida a prova, e em seguida vem o **relatório inicial** (caminhão e carga).
 2. **Aproximação:** o CCO é avisado e o agente **liga para o recebedor** (`ReceiverNotified`). Os desfechos:

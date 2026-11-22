@@ -3,7 +3,8 @@ from enum import StrEnum
 
 
 class StatusRota(StrEnum):
-    PLANEJADA = "planejada"
+    PUBLICADA = "publicada"  # transportadora publicou, sem motorista
+    PLANEJADA = "planejada"  # atribuída a um motorista, viagem não iniciada
     NA_ORIGEM = "na_origem"
     EM_TRANSITO = "em_transito"
     APROXIMANDO = "aproximando"
@@ -92,3 +93,5 @@ class TipoEvento(StrEnum):
     RESPOSTA_CENTRAL = "resposta_central"
     DIVERGENCIA_GPS = "divergencia_gps"
     EVENTO_APP = "evento_app"
+    ROTA_PUBLICADA = "rota_publicada"
+    ROTA_ATRIBUIDA = "rota_atribuida"

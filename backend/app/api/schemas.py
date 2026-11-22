@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TokenOut(BaseModel):
@@ -89,3 +89,43 @@ class DomainEventIn(BaseModel):
     occurredAt: Optional[str] = None
     source: str = "driver"
     payload: dict[str, Any] = {}
+
+
+E164 = r"^\+[1-9]\d{7,14}$"
+
+
+class Ponto(BaseModel):
+    nome: str
+    lat: float
+    lng: float
+
+
+class RecebedorIn(BaseModel):
+    empresa: str
+    nome: str
+    telefone_e164: str = Field(pattern=E164)
+
+
+class NovaRota(BaseModel):
+    """Rota publicada pela transportadora no CCO. motorista_id opcional (atribui na hora)."""
+    origem: Ponto
+    destino: Ponto
+    recebedor: RecebedorIn
+    carga_descricao: str = ""
+    carga_t: float = Field(gt=0)
+    placa: str = ""
+    nota_fiscal: str = ""
+    janela_descarga: str = ""
+    empresa_id: int = 1
+    motorista_id: Optional[int] = None
+
+
+class Atribuir(BaseModel):
+    motorista_id: int
+
+
+class NovoMotorista(BaseModel):
+    nome: str
+    telefone_e164: Optional[str] = Field(default=None, pattern=E164)
+    email: Optional[str] = None
+    empresa_id: int = 1

@@ -16,8 +16,9 @@ ORIGEM = ("CD Jundiaí", -23.1857, -46.8978)
 DESTINO = ("Mercadão Campinas, CD Norte", -22.9056, -47.0608)
 
 
-def trajeto(n: int = 40) -> list[list[float]]:
-    (_, la1, lo1), (_, la2, lo2) = ORIGEM, DESTINO
+def trajeto(n: int = 40, origem=None, destino=None) -> list[list[float]]:
+    """Trajeto simulado em linha reta (o GPS da demo é simulado; ver README)."""
+    (la1, lo1), (la2, lo2) = origem or ORIGEM[1:], destino or DESTINO[1:]
     return [[round(la1 + (la2 - la1) * i / n, 6), round(lo1 + (lo2 - lo1) * i / n, 6)] for i in range(n + 1)]
 
 
@@ -44,7 +45,7 @@ def seed(reset: bool = False) -> int:
         s.refresh(emp)
         s.add(RegraEscalonamento(empresa_id=emp.id, max_tentativas=3, intervalo_s=cfg.cco_intervalo_s,
                                  niveis=["push", "painel", "ligacao"], acao_final="ligar_recebedor"))
-        mot = Motorista(empresa_id=emp.id, nome="Carlos Andrade", telefone_e164="+5511900000001")
+        mot = Motorista(empresa_id=emp.id, nome="Carlos Andrade", telefone_e164="+5511900000001", email="carlos@rotasul.test")
         s.add(mot)
         s.commit()
         s.refresh(mot)
@@ -64,6 +65,7 @@ def seed(reset: bool = False) -> int:
             recebedor_telefone_e164=cfg.recebedor_telefone_e164,
             aproximacao_min=15,
             raio_chegada_m=300,
+            publicada_em=None,
         )
         s.add(rota)
         s.commit()

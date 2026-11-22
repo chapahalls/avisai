@@ -5,9 +5,9 @@ from sqlmodel import select
 from ..infra.db import sessao
 from ..infra.models import (Estadia, Evento, EventoGeo, LigacaoRecebedor, Motorista, Ocorrencia, Reporte, Rota,
                             SessaoAgente, SolicitacaoCentral, TaskCCO)
-from ..servicos import central, consultas, rotas, sessoes, tasks
+from ..servicos import central, consultas, publicacao, rotas, sessoes, tasks
 from .deps import c, erro_http
-from .schemas import Descarga, NovaSolicitacao, Posicao, PosicaoOut
+from .schemas import Atribuir, Descarga, NovaRota, NovaSolicitacao, NovoMotorista, Posicao, PosicaoOut
 
 router = APIRouter(tags=["rotas"])
 
@@ -17,7 +17,7 @@ def rota_publica(r: Rota, com_trajeto: bool = False) -> dict:
     d.update(canal_motorista=sessoes.canal_motorista(r.id), uid_motorista=sessoes.UID_MOTORISTA,
              uid_cco=sessoes.UID_CCO, uid_agente=sessoes.UID_AGENTE_MOTORISTA)
     with sessao() as s:
-        m = s.get(Motorista, r.motorista_id)
+        m = s.get(Motorista, r.motorista_id) if r.motorista_id else None
     d["motorista_nome"] = m.nome if m else None
     return d
 
@@ -102,3 +102,43 @@ async def nova_solicitacao(rota_id: int, body: NovaSolicitacao, ct=Depends(c)):
 @router.get("/rotas/{rota_id}/solicitacoes")
 def solicitacoes(rota_id: int):
     return central.listar(rota_id)
+
+
+# ---------------- publicação de rota e motoristas (CCO) ----------------
+
+@router.post("/rotas")
+async def publicar_rota(body: NovaRota, ct=Depends(c)):
+    """Transportadora publica a rota (trajeto simulado) e, se vier motorista_id, já atribui."""
+    try:
+        r = await publicacao.publicar(ct, body.model_dump(), body.motorista_id)
+    except Exception as e:  # noqa: BLE001
+        raise erro_http(e)
+    return rota_publica(consultas.rota(r.id), com_trajeto=True)
+
+
+@router.post("/rotas/{rota_id}/atribuir")
+async def atribuir_rota(rota_id: int, body: Atribuir, ct=Depends(c)):
+    """Atribui a rota a um motorista: gera RouteAssigned e o app (WS ?motorista_id=) recebe na hora."""
+    try:
+        r = await publicacao.atribuir(ct, rota_id, body.motorista_id)
+    except Exception as e:  # noqa: BLE001
+        raise erro_http(e)
+    return rota_publica(r)
+
+
+@router.get("/motoristas")
+def listar_motoristas():
+    return publicacao.motoristas()
+
+
+@router.post("/motoristas")
+def criar_motorista(body: NovoMotorista):
+    return publicacao.criar_motorista(body.nome, body.telefone_e164, (body.email or "").lower() or None, body.empresa_id)
+
+
+@router.get("/motoristas/{motorista_id}/rota-atual")
+def rota_atual(motorista_id: int):
+    r = publicacao.rota_atual(motorista_id)
+    if not r:
+        raise erro_http(consultas.NaoEncontrado("motorista sem rota atribuída"))
+    return rota_publica(r, com_trajeto=True)

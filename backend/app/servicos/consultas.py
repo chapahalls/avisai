@@ -26,7 +26,7 @@ def contexto_rota(rota_id: int) -> tuple[Rota, str, str]:
         r = s.get(Rota, rota_id)
         if not r:
             raise NaoEncontrado(f"rota {rota_id} não existe")
-        m = s.get(Motorista, r.motorista_id)
+        m = s.get(Motorista, r.motorista_id) if r.motorista_id else None
         e = s.get(Empresa, r.empresa_id)
     return r, (m.nome if m else "parceiro"), (e.nome if e else "transportadora")
 

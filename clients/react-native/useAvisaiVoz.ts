@@ -40,6 +40,10 @@ export interface FalaAgente {
 export interface OpcoesVoz {
   api: string; // URL pública do backend (PUBLIC_URL do túnel)
   rotaId: number;
+  /** Se informado, o WS acompanha as rotas do motorista e avisa quando uma rota nova for atribuída. */
+  motoristaId?: number;
+  /** Chamado quando a transportadora atribui uma rota nova a este motorista (RouteAssigned). */
+  onRotaAtribuida?: (rotaId: number) => void;
   /** Quantos eventos manter em memória (padrão 50). */
   maxEventos?: number;
 }
@@ -80,7 +84,7 @@ async function json<T>(r: Response): Promise<T> {
   return (await r.json()) as T;
 }
 
-export function useAvisaiVoz({ api, rotaId, maxEventos = 50 }: OpcoesVoz) {
+export function useAvisaiVoz({ api, rotaId, motoristaId, onRotaAtribuida, maxEventos = 50 }: OpcoesVoz) {
   const base = api.replace(/\/$/, "");
   const [status, setStatus] = useState<StatusVoz>("parado");
   const [erro, setErro] = useState<string | null>(null);
@@ -100,7 +104,8 @@ export function useAvisaiVoz({ api, rotaId, maxEventos = 50 }: OpcoesVoz) {
 
   // ---------- WebSocket com eventos da rota (legenda, contador, Task, resposta do recebedor) ----------
   const conectarWs = useCallback(() => {
-    const url = `${base.replace(/^http/, "ws")}/ws?rota_id=${rotaId}`;
+    const filtro = motoristaId != null ? `motorista_id=${motoristaId}` : `rota_id=${rotaId}`;
+    const url = `${base.replace(/^http/, "ws")}/ws?${filtro}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
     ws.onmessage = (m) => {
@@ -116,6 +121,7 @@ export function useAvisaiVoz({ api, rotaId, maxEventos = 50 }: OpcoesVoz) {
           break;
         case "evento":
           setEventos((xs) => [dado, ...xs].slice(0, maxEventos));
+          if (dado.tipo === "rota_atribuida" && dado.rota_id != null) onRotaAtribuida?.(dado.rota_id);
           if (dado.tipo === "resposta_recebedor") {
             const d = dado.dados as { ligacao_id?: number; previsao?: string; doca?: string; motivo?: string };
             setLigacao((l) => ({
@@ -148,7 +154,7 @@ export function useAvisaiVoz({ api, rotaId, maxEventos = 50 }: OpcoesVoz) {
       wsRef.current = null;
       if (vivoRef.current) setTimeout(conectarWs, 2000); // reconecta
     };
-  }, [base, rotaId, maxEventos]);
+  }, [base, rotaId, motoristaId, onRotaAtribuida, maxEventos]);
 
   useEffect(() => {
     vivoRef.current = true;

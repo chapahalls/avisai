@@ -31,12 +31,15 @@ class Motorista(SQLModel, table=True):
     empresa_id: int = Field(foreign_key="empresa.id")
     nome: str
     telefone_e164: Optional[str] = None
+    email: Optional[str] = Field(default=None, index=True)  # login SSO (mock)
 
 
 class Rota(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     empresa_id: int = Field(foreign_key="empresa.id")
-    motorista_id: int = Field(foreign_key="motorista.id")
+    motorista_id: Optional[int] = Field(default=None, foreign_key="motorista.id")  # vazio = publicada sem motorista
+    publicada_em: Optional[datetime] = None
+    atribuida_em: Optional[datetime] = None
     origem_nome: str
     origem_lat: float
     origem_lng: float

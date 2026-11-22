@@ -20,7 +20,7 @@ from ..infra.db import sessao
 from ..infra.eventos import serial
 from ..infra.models import Evento, SessaoAgente
 from ..integracoes import tokens
-from ..servicos import consultas, ligacoes, metricas, reportes, sessoes, tasks
+from ..servicos import consultas, ligacoes, metricas, publicacao, reportes, sessoes, tasks
 from .deps import c, erro_http
 from .schemas import DomainEventIn
 
@@ -42,6 +42,8 @@ TIPO_DOMINIO = {
     "escalada_recebedor": "TaskEscalated",
     "task_confirmada": "TaskAcknowledged",
     "descarga": "UnloadConfirmed",
+    "rota_atribuida": "RouteAssigned",
+    "rota_publicada": "RoutePublished",
     # extensões (fora da lista do doc)
     "sessao_iniciada": "AgentSessionStarted",
     "retirada_detectada": "PickupGeofenceEntered",
@@ -57,7 +59,7 @@ TIPO_DOMINIO = {
     "fala_recebedor": "VoiceTranscript",
     "fala_agente": "VoiceTranscript",
 }
-FONTE = {"fala_motorista": "driver", "fala_recebedor": "agent", "fala_agente": "agent", "task_confirmada": "cco",
+FONTE = {"rota_publicada": "cco", "rota_atribuida": "cco", "fala_motorista": "driver", "fala_recebedor": "agent", "fala_agente": "agent", "task_confirmada": "cco",
          "pedido_central": "cco", "aproximacao": "system", "chegada": "system", "retirada_detectada": "system"}
 
 
@@ -195,7 +197,13 @@ async def post_event(e: DomainEventIn, ct=Depends(c)):
 # ---------------- dados mock da viagem ----------------
 
 @router.get("/api/route")
-def api_route(tripId: Optional[str] = None):
+def api_route(tripId: Optional[str] = None, driverId: Optional[int] = None):
+    """Rota da viagem: por tripId, ou a rota atual atribuída ao motorista (driverId)."""
+    if driverId is not None and not tripId:
+        atual = publicacao.rota_atual(driverId)
+        if not atual:
+            raise erro_http(consultas.NaoEncontrado("motorista sem rota atribuída"))
+        tripId = str(atual.id)
     try:
         r, nome, empresa = consultas.contexto_rota(_rota_id(tripId))
     except Exception as e:  # noqa: BLE001
@@ -208,6 +216,7 @@ def api_route(tripId: Optional[str] = None):
         "destination": {"name": r.destino_nome, "lat": r.destino_lat, "lng": r.destino_lng},
         "polyline": r.trajeto,
         "receiver": {"company": r.recebedor_empresa, "name": r.recebedor_nome, "phone": r.recebedor_telefone_e164},
+        "driverId": r.motorista_id, "assignedAt": serial(r.atribuida_em) if r.atribuida_em else None,
         "position": {"lat": r.ultima_lat, "lng": r.ultima_lng, "distanceM": r.distancia_m, "etaMin": r.eta_min},
         "channel": sessoes.canal_motorista(r.id), "driverUid": sessoes.UID_MOTORISTA, "agentUid": sessoes.UID_AGENTE_MOTORISTA,
     }
@@ -242,8 +251,14 @@ class SsoIn(BaseModel):
 
 @router.post("/auth/sso")
 def auth_sso(body: SsoIn = SsoIn()):
-    """SSO mock: devolve um token fake. Papel 'cco' se o e-mail tiver 'cco', senão 'driver'."""
-    email = body.email or "motorista@rotasul.test"
-    role = "cco" if "cco" in email.lower() else "driver"
-    return {"token": f"mock-{uuid.uuid4().hex}", "user": {"id": email, "email": email, "role": role,
-            "name": "Ana (CCO)" if role == "cco" else "Carlos Andrade", "tripId": "1" if role == "driver" else None}}
+    """SSO mock: token fake. Papel 'cco' se o e-mail tiver 'cco'; senão é o motorista com esse e-mail
+    (ou o primeiro cadastrado), com a rota atual atribuída a ele."""
+    email = (body.email or "carlos@rotasul.test").lower()
+    token = f"mock-{uuid.uuid4().hex}"
+    if "cco" in email:
+        return {"token": token, "user": {"id": email, "email": email, "role": "cco", "name": "Ana (CCO)",
+                                         "driverId": None, "tripId": None}}
+    m = publicacao.motorista_por_email(email) or next(iter(publicacao.motoristas()), None)
+    atual = publicacao.rota_atual(m.id) if m else None
+    return {"token": token, "user": {"id": email, "email": email, "role": "driver", "name": m.nome if m else email,
+                                     "driverId": m.id if m else None, "tripId": str(atual.id) if atual else None}}

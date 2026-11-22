@@ -25,9 +25,21 @@ def dumps(d: Any) -> str:
 
 
 class Assinatura:
-    def __init__(self, rota_id: Optional[int] = None):
+    """Filtro: por rota (rota_id) ou por motorista (motorista_id: as rotas dele + atribuições novas)."""
+
+    def __init__(self, rota_id: Optional[int] = None, motorista_id: Optional[int] = None, rotas: Optional[set] = None):
         self.rota_id = rota_id
+        self.motorista_id = motorista_id
+        self.rotas: set = set(rotas or ())
         self.fila: asyncio.Queue = asyncio.Queue(maxsize=1000)
+
+    def aceita(self, rota_id: Optional[int], motorista_id: Optional[int]) -> bool:
+        if self.motorista_id is not None:
+            if motorista_id == self.motorista_id and rota_id is not None:
+                self.rotas.add(rota_id)  # rota recém-atribuída passa a ser acompanhada
+                return True
+            return rota_id in self.rotas
+        return self.rota_id is None or rota_id is None or rota_id == self.rota_id
 
 
 class Eventos:
@@ -36,18 +48,26 @@ class Eventos:
     def __init__(self) -> None:
         self._assinantes: set[Assinatura] = set()
 
-    def assinar(self, rota_id: Optional[int] = None) -> Assinatura:
-        a = Assinatura(rota_id)
+    def assinar(self, rota_id: Optional[int] = None, motorista_id: Optional[int] = None) -> Assinatura:
+        rotas = None
+        if motorista_id is not None:
+            from sqlmodel import select
+
+            from .models import Rota
+
+            with sessao() as s:
+                rotas = set(s.exec(select(Rota.id).where(Rota.motorista_id == motorista_id)).all())
+        a = Assinatura(rota_id, motorista_id, rotas)
         self._assinantes.add(a)
         return a
 
     def cancelar(self, a: Assinatura) -> None:
         self._assinantes.discard(a)
 
-    def publicar(self, canal: str, payload: dict, rota_id: Optional[int] = None) -> None:
+    def publicar(self, canal: str, payload: dict, rota_id: Optional[int] = None, motorista_id: Optional[int] = None) -> None:
         msg = dumps(payload)
         for a in list(self._assinantes):
-            if a.rota_id is not None and rota_id is not None and a.rota_id != rota_id:
+            if not a.aceita(rota_id, motorista_id):
                 continue
             try:
                 a.fila.put_nowait((canal, msg))
@@ -55,14 +75,15 @@ class Eventos:
                 pass
 
     def registrar(self, tipo: TipoEvento, mensagem: str, rota_id: Optional[int] = None, **dados: Any) -> Evento:
+        fonte = dados.pop("_fonte", "system")
         dados_json = json.loads(dumps(dados))
         with sessao() as s:
-            ev = Evento(rota_id=rota_id, tipo=str(tipo), mensagem=mensagem, dados=dados_json)
+            ev = Evento(rota_id=rota_id, tipo=str(tipo), mensagem=mensagem, dados=dados_json, source=fonte)
             s.add(ev)
             s.commit()
             s.refresh(ev)
         log.info("[%s] rota=%s %s", tipo, rota_id, mensagem)
-        self.publicar("evento", envelope(ev), rota_id)
+        self.publicar("evento", envelope(ev), rota_id, dados.get("motorista_id"))
         return ev
 
 
