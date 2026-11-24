@@ -124,6 +124,29 @@ async def _ligar(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
     }
 
 
+async def _comandar_app(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    from ..dominio import comandos_app
+
+    cmd, erro = comandos_app.validar(args)
+    if not cmd:
+        return {"ok": False, "erro": erro}
+    if cmd.acao == "sair_da_conta" and not cmd.confirmado:
+        return {"ok": False, "pergunte_agora": comandos_app.PEDIR_CONFIRMACAO_SAIR,
+                "instrucao": "Só chame de novo com confirmado=true depois que ele confirmar."}
+    from . import consultas
+
+    c.eventos.publicar("acao_cliente", comandos_app.payload_cliente(sa.rota_id, cmd), sa.rota_id)
+    return {"ok": True, "diga": comandos_app.fala_confirmacao(cmd, consultas.rota(sa.rota_id).status)}
+
+
+async def _mensagem_cco(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    texto = str(args.get("texto") or "").strip()
+    if not texto:
+        return {"ok": False, "erro": "Qual é o recado para o CCO?"}
+    ch = await chamados.abrir(c, sa.rota_id, "mensagem", "Recado do motorista", texto, transcricao=fala)
+    return {"ok": True, "chamado_id": ch.id, "diga": f"Mandei pro CCO: {texto}. Te aviso quando responderem."}
+
+
 async def _falar_motorista(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
     mensagem = await mensagens.falar_motorista(
         c,
@@ -177,6 +200,25 @@ REGISTRO: dict[str, Ferramenta] = {
             "motivo": {"type": "string", "description": "Motivo fiel e curto da ligação."}},
          "required": ["destino", "motivo"]},
         _ligar),
+    "comandar_app": Ferramenta(
+        Papel.MOTORISTA, "Comanda o app do motorista por voz: abrir uma tela, abrir um documento, voltar, "
+        "encerrar a conversa ou sair da conta. Use quando ele PEDIR para ver ou abrir algo no app; "
+        "para responder perguntas sobre a nota ou o CT-e, use consultar_documento.",
+        {"type": "object", "properties": {
+            "acao": {"type": "string", "enum": ["abrir_tela", "abrir_documento", "voltar", "encerrar_conversa",
+                                                "sair_da_conta", "navegar", "ligar_gps"],
+                     "description": "navegar = rota até o destino no app de mapas."},
+            "tela": {"type": "string", "enum": ["inicio", "mapa", "documentos", "mensagens", "fila"],
+                     "description": "Para abrir_tela. fila = fila no recebedor (doca e tempo parado)."},
+            "documento": {"type": "string", "description": "Para abrir_documento: NF-e, CT-e ou o nome do anexo que ele disse."},
+            "confirmado": {"type": "boolean", "description": "Para sair_da_conta: true só depois que ele confirmar."}},
+         "required": ["acao"]},
+        _comandar_app),
+    "enviar_mensagem_cco": Ferramenta(
+        Papel.MOTORISTA, "Manda um recado livre do motorista ao CCO (não é ocorrência). O CCO responde e o agente repassa por voz.",
+        {"type": "object", "properties": {"texto": {"type": "string", "description": "O recado, fiel e curto."}},
+         "required": ["texto"]},
+        _mensagem_cco),
     "confirmar_chegada": Ferramenta(
         Papel.MOTORISTA, "Motorista confirmou por voz que chegou ao destino (portaria, pátio, recebedor).",
         {"type": "object", "properties": {"observacao": {"type": "string", "description": "O que o motorista disse, resumido."}}},

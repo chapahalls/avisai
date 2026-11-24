@@ -192,9 +192,15 @@ class VozAgora:
 
     async def falar_motorista(self, rota_id: int, texto: str, prioridade: str = "APPEND") -> bool:
         sa = consultas.sessao_ativa_motorista(rota_id)
-        self.c.eventos.registrar(TipoEvento.FALA_AGENTE, texto, rota_id, destino="motorista",
-                                 entregue=bool(sa and sa.agent_id), prioridade=prioridade)
+        ev = self.c.eventos.registrar(TipoEvento.FALA_AGENTE, texto, rota_id, destino="motorista",
+                                      entregue=bool(sa and sa.agent_id), prioridade=prioridade)
         if not sa or not sa.agent_id:
+            # Sem conversa aberta o aviso não se perde: o app fala em voz local e, se for
+            # pergunta, abre a conversa para o motorista responder.
+            self.c.eventos.publicar("aviso_motorista", {
+                "id": ev.id, "rota_id": rota_id, "texto": texto, "prioridade": prioridade,
+                "pede_resposta": texto.rstrip().endswith("?"),
+            }, rota_id)
             return False
         try:
             await self.c.agora.speak(sa.agent_id, texto, prioridade, sa.canal, sa.agent_uid)

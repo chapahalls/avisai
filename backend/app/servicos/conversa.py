@@ -45,7 +45,7 @@ def estado(c, rota_id: int) -> str:
     return prompts.estado_atual(
         r.status, r.distancia_m, r.eta_min, consultas.resumo_estadia(c, e) if e else None,
         consultas.ultima_task(rota_id), consultas.ultima_ligacao(rota_id), [ev.mensagem for ev in reversed(evs)],
-        pendencias(rota_id),
+        pendencias(rota_id), consultas.ultimos_avisos(rota_id),
     )
 
 
@@ -138,6 +138,7 @@ def estado_contingencia(c, sa: SessaoAgente) -> contingencia.Estado:
         inicial_faltantes=reportes.faltantes_abertos(sa.rota_id, "inicial"),
         checkin_faltantes=reportes.faltantes_abertos(sa.rota_id, "checkin"),
         pergunta_central=(central.pendente(sa.rota_id).pergunta if central.pendente(sa.rota_id) else None),
+        ultimos_avisos=consultas.ultimos_avisos(sa.rota_id),
     )
 
 

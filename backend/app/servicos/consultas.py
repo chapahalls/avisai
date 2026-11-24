@@ -73,3 +73,15 @@ def resumo_estadia_dict(c, e: Estadia) -> dict:
     d = resumo_estadia(c, e).dict()
     d.update(estadia_id=e.id, rota_id=e.rota_id, aceleracao=c.settings.estadia_aceleracao)
     return d
+
+
+def ultimos_avisos(rota_id: int, limite: int = 3) -> list[str]:
+    """O que o agente avisou ao motorista por último (para "repete" e "o que eu perdi")."""
+    from ..dominio.enums import TipoEvento
+    from ..infra.models import Evento
+
+    with sessao() as s:
+        evs = s.exec(select(Evento).where(Evento.rota_id == rota_id, Evento.tipo == str(TipoEvento.FALA_AGENTE))
+                     .order_by(Evento.id.desc()).limit(30)).all()
+    avisos = [e.mensagem for e in evs if (e.dados or {}).get("destino") == "motorista"]
+    return list(reversed(avisos[:limite]))
