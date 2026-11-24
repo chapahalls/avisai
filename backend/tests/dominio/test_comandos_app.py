@@ -8,6 +8,8 @@ from app.dominio.comandos_app import Comando, interpretar, payload_cliente, vali
     ("Abre o mapa", Comando("abrir_tela", tela="mapa")),
     ("me mostra a rota", Comando("abrir_tela", tela="mapa")),
     ("Vai pras mensagens", Comando("abrir_tela", tela="mensagens")),
+    ("Mudar para documentos", Comando("abrir_tela", tela="documentos")),
+    ("troca pro mapa", Comando("abrir_tela", tela="mapa")),
     ("abrir a fila do recebedor", Comando("abrir_tela", tela="fila")),
     ("mostra os documentos da viagem", Comando("abrir_tela", tela="documentos")),
     ("volta pro início", Comando("abrir_tela", tela="inicio")),

@@ -114,7 +114,7 @@ def _falar_documento(doc: Optional[str]) -> str:
 
 # ---------- contingência (sem LLM): intenção por palavras-chave ----------
 
-_ABRIR = r"\b(abr\w*|mostr\w*|ver|veja|exib\w*|ir (pras?|para|pros?|ao|aos|as?|nos?|nas?)|vai (pras?|para|pros?)|vamos (pras?|para|pros?)|leva\w* (pras?|para|pros?)|entr\w* (em|no|na)|open|show|go to)\b"
+_ABRIR = r"\b(abr\w*|mostr\w*|ver|veja|exib\w*|(mud|troc|pass)\w* (pras?|para|pros?)|ir (pras?|para|pros?|ao|aos|as?|nos?|nas?)|vai (pras?|para|pros?)|vamos (pras?|para|pros?)|leva\w* (pras?|para|pros?)|entr\w* (em|no|na)|open|show|go to)\b"
 _TELAS_RE = [  # a ordem importa: "fila do recebedor" antes de "mensagens"
     ("fila", r"\bfila (do|no|da) (recebedor|recebimento|doca|descarga)\b|\bfila\b(?!.*\bsincroniza)|\bdoca\b"),
     ("mensagens", r"\bmensage(m|ns)\b|\bchat\b|\bconversa com (o )?cco\b|\bsincroniza\w*|\boutbox\b"),
