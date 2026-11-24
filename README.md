@@ -295,6 +295,18 @@ Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi
 | `contador` | `{estadias: [{rota_id, tempo_parado, franquia_restante, valor_fmt, horas_paradas, ...}]}` a cada 1 s |
 | `reset` | `{rota_id}` |
 | `chamado` | `{chamado: ChamadoCCO}`; abertura, lembrete, resposta ou timeout |
+| `acao_cliente` | `{rota_id, acao, tela?, documento?}`: comando do app do motorista pedido por voz (ver abaixo) |
+
+### Comandos do app por voz (`acao_cliente`)
+O motorista pede ("abre o mapa", "mostra a nota fiscal", "volta", "tchau, AvisAI", "sair da conta") e o agente chama a ferramenta `comandar_app`. O backend publica só a intenção no `/ws`; o app nunca age a partir da transcrição. Sem LLM, a contingência reconhece os mesmos pedidos (`dominio/comandos_app.py`).
+
+| `acao` | Campos | O app faz |
+|---|---|---|
+| `open_screen` | `tela`: `inicio`, `mapa`, `documentos`, `mensagens` ou `fila` | abre a tela |
+| `open_document` | `documento`: `NF-e`, `CT-e`, `MDF-e` ou o nome do anexo | abre o documento (ou a lista, se não achar) |
+| `go_back` | — | volta uma tela |
+| `end_voice` | — | espera o agente se despedir e encerra a conversa |
+| `logout` | — | sai da conta; o agente só manda depois de o motorista confirmar |
 
 Valores de `EventoStream.tipo` (enum `TipoEvento`):
 - sessão: `sessao_iniciada`;

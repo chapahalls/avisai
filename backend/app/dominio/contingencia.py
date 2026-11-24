@@ -137,6 +137,15 @@ def _motorista(fala: str, t: str, e: Estado) -> Decisao:
     pergunta = _tem(t, *PERGUNTA)
     from . import documentos  # import local: documentos usa normalizar() deste módulo
 
+    from . import comandos_app
+
+    # Antes das outras intenções: "quero sair da conta" não é "quero sair" (iniciar viagem).
+    cmd = comandos_app.interpretar(fala)
+    if cmd:
+        if cmd.acao == "sair_da_conta" and not cmd.confirmado:
+            return Decisao(comandos_app.PEDIR_CONFIRMACAO_SAIR)
+        return Decisao(comandos_app.fala_confirmacao(cmd), "comandar_app", cmd.args())
+
     if not pergunta and _tem(
         t,
         r"\b(inici|comec|sair|partir)\w*(?:\s+a)?\s+(?:viagem|rota)\b",
