@@ -1,7 +1,7 @@
 """Comandos do app por voz: a fala vira uma intenção fechada; o app nunca recebe a transcrição."""
 import pytest
 
-from app.dominio.comandos_app import Comando, interpretar, payload_cliente, validar
+from app.dominio.comandos_app import Comando, fala_confirmacao, interpretar, mensagem_cco, payload_cliente, validar
 
 
 @pytest.mark.parametrize("fala,esperado", [
@@ -48,3 +48,30 @@ def test_payload_so_leva_a_intencao():
     assert payload_cliente(1, cmd) == {"rota_id": 1, "acao": "open_document", "documento": "NF-e"}
     cmd, _ = validar({"acao": "encerrar_conversa"})
     assert payload_cliente(1, cmd) == {"rota_id": 1, "acao": "end_voice"}
+
+
+@pytest.mark.parametrize("fala,esperado", [
+    ("me leva até o recebedor", Comando("navegar")),
+    ("abre o waze", Comando("navegar")),
+    ("liga o GPS", Comando("ligar_gps")),
+    ("ativa a localização", Comando("ligar_gps")),
+])
+def test_navegar_e_gps(fala, esperado):
+    assert interpretar(fala) == esperado
+
+
+@pytest.mark.parametrize("fala,recado", [
+    ("avisa o CCO que vou parar pra almoçar", "vou parar pra almoçar"),
+    ("Manda uma mensagem pra central: chego em 20 minutos", "chego em 20 minutos"),
+    ("fala pro operador que o cliente pediu pra esperar", "o cliente pediu pra esperar"),
+    ("abre a nota fiscal", None),
+])
+def test_recado_ao_cco(fala, recado):
+    assert mensagem_cco(fala) == recado
+
+
+def test_documento_com_caminhao_andando_so_abre_parado():
+    cmd = Comando("abrir_documento", documento="NF-e")
+    assert "parar" in fala_confirmacao(cmd, "em_transito")
+    assert fala_confirmacao(cmd, "no_destino") == "Abrindo a nota fiscal."
+    assert fala_confirmacao(Comando("abrir_tela", tela="mapa"), "em_transito") == "Abrindo o mapa."

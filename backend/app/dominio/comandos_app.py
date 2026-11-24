@@ -9,6 +9,11 @@ Contrato com o app (`acao_cliente`):
     {"rota_id": int, "acao": "go_back"}
     {"rota_id": int, "acao": "end_voice"}   o app encerra a conversa depois que o agente se despede
     {"rota_id": int, "acao": "logout"}      só depois de o motorista confirmar
+    {"rota_id": int, "acao": "open_navigation"}  rota até o destino no app de mapas
+    {"rota_id": int, "acao": "start_gps"}
+
+Documentos e mensagens pedem leitura: com o caminhão andando, o app só abre quando ele parar
+(o agente avisa isso em vez de dizer "abrindo").
 """
 import re
 from dataclasses import dataclass
@@ -17,7 +22,9 @@ from typing import Optional
 from .contingencia import normalizar
 
 TELAS = ("inicio", "mapa", "documentos", "mensagens", "fila")
-ACOES = ("abrir_tela", "abrir_documento", "voltar", "encerrar_conversa", "sair_da_conta")
+ACOES = ("abrir_tela", "abrir_documento", "voltar", "encerrar_conversa", "sair_da_conta", "navegar", "ligar_gps")
+TELAS_DE_LEITURA = ("documentos", "mensagens")
+STATUS_EM_MOVIMENTO = ("em_transito", "aproximando")
 
 ACAO_CLIENTE = {
     "abrir_tela": "open_screen",
@@ -25,6 +32,8 @@ ACAO_CLIENTE = {
     "voltar": "go_back",
     "encerrar_conversa": "end_voice",
     "sair_da_conta": "logout",
+    "navegar": "open_navigation",
+    "ligar_gps": "start_gps",
 }
 
 FALA_TELA = {
@@ -85,7 +94,18 @@ def payload_cliente(rota_id: int, cmd: Comando) -> dict:
     return p
 
 
-def fala_confirmacao(cmd: Comando) -> str:
+def exige_parado(cmd: Comando) -> bool:
+    """Telas de leitura: com o caminhão andando, o app só abre quando ele parar."""
+    return cmd.acao == "abrir_documento" or (cmd.acao == "abrir_tela" and cmd.tela in TELAS_DE_LEITURA)
+
+
+def fala_confirmacao(cmd: Comando, status_rota: Optional[str] = None) -> str:
+    if status_rota in STATUS_EM_MOVIMENTO and exige_parado(cmd):
+        return "Com o caminhão andando eu não abro isso na tela. Abro assim que você parar; se quiser, eu te falo o que precisa."
+    if cmd.acao == "navegar":
+        return "Abrindo a rota no mapa do celular."
+    if cmd.acao == "ligar_gps":
+        return "GPS ligado."
     if cmd.acao == "abrir_tela":
         return FALA_TELA[cmd.tela or "inicio"]
     if cmd.acao == "abrir_documento":
@@ -129,6 +149,9 @@ _ENCERRAR = (
     r"\b(tchau|ate mais|ate logo|falou)\b.*\bavis\s?a?\s?a?i\b",
     r"\bpode (desligar|encerrar)\b",
 )
+_NAVEGAR = (r"\bme lev\w*\b|\bleva eu\b|\bnaveg\w* (ate|pras?|pros?|para)\b|\bcomo (eu )?chego\b"
+            r"|\babr\w* (o )?(google maps|waze|navegacao|navegador)\b|\b(inici|comec)\w* (a )?navegacao\b")
+_LIGAR_GPS = r"\b(lig|ativ|liga|ative|ativa)\w* (o |a )?(gps|localizacao|rastreamento)\b"
 _SAIR = r"\b(sair|saia|sai) da (minha )?conta\b|\bfaz(er)? logout\b|\bdeslog\w*\b|\blog ?out\b"
 _CONFIRMA_SAIR = r"\bconfirm\w*\b.*\b(sair|logout|deslog)"
 
@@ -145,6 +168,10 @@ def interpretar(fala: str) -> Optional[Comando]:
         return Comando("sair_da_conta")
     if any(re.search(p, t) for p in _ENCERRAR):
         return Comando("encerrar_conversa")
+    if re.search(_NAVEGAR, t) and "?" not in fala.replace("como chego", ""):
+        return Comando("navegar")
+    if re.search(_LIGAR_GPS, t):
+        return Comando("ligar_gps")
     if re.search(r"\bvolt\w*\b", t) and not re.search(_ABRIR, t) and not any(re.search(p, t) for _, p in _TELAS_RE):
         return Comando("voltar")
     pede = re.search(_ABRIR, t) or re.search(r"\bvolt\w* (pras?|para|pros?|ao|as?)\b", t)
@@ -159,3 +186,35 @@ def interpretar(fala: str) -> Optional[Comando]:
         if re.search(padrao, t):
             return Comando("abrir_tela", tela=tela)
     return None
+
+
+# ---------- mensagem livre ao CCO e "repete" ----------
+
+_MSG_CCO = re.compile(
+    r"\b(?:avis\w*|fal\w*|diz\w*|manda\w*|mand\w*(?: uma)? (?:mensagem|recado)|deixa\w*(?: um)? recado)"
+    r" (?:pro|pra|para o|ao|o)? ?(?:cco|central|operador|operacao)\b[,:]?\s*(?:(?:dizendo|falando|avisando)\s+)?(?:que\s+)?(.+)"
+)
+_REPETIR = r"\b(repet\w*|o que (voce|vc|tu) (disse|falou)|nao (entendi|ouvi)|o que eu perdi|teve (algum |alguma )?(aviso|novidade))\b"
+
+
+def mensagem_cco(fala: str) -> Optional[str]:
+    """ "avisa o CCO que vou parar pra almoçar" → "vou parar pra almoçar". Sem texto, None."""
+    t = normalizar(fala or "")
+    m = _MSG_CCO.search(t)
+    if not m:
+        return None
+    inicio = m.start(1)  # normalizar preserva o comprimento: recorta a fala original
+    texto = (fala or "")[inicio:].strip(" ,.:;")
+    return texto or None
+
+
+def pede_repetir(fala: str) -> bool:
+    return bool(re.search(_REPETIR, normalizar(fala or "")))
+
+
+def falar_avisos(avisos: list[str]) -> str:
+    if not avisos:
+        return "Não tenho aviso recente pra você."
+    if len(avisos) == 1:
+        return f"O último aviso foi: {avisos[0]}"
+    return "Os últimos avisos foram: " + " Depois: ".join(avisos)

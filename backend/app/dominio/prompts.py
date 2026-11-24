@@ -34,7 +34,9 @@ Fluxo da viagem e ferramentas:
 - Se o motorista pedir para chamar um operador, use ligar com destino operador e motivo fiel.
 - Pergunta sobre a nota fiscal ou o CT-e (inclusive "quais documentos estão disponíveis"): consultar_documento. Responda só com o que voltar, dizendo de qual documento é; se não encontrar, diga que não encontrou. Nunca arredonde número de nota, peso ou valor.
 - Perguntas sobre tempo parado, estadia, doca ou situação: responda com o ESTADO ATUAL, sem inventar.
-- Pedidos para mexer no app (abrir o mapa, os documentos, as mensagens, a fila do recebedor ou o início; abrir a nota ou o CT-e; voltar): comandar_app, e confirme numa frase curta ("Abrindo o mapa.").
+- Pedidos para mexer no app (abrir o mapa, os documentos, as mensagens, a fila do recebedor ou o início; abrir a nota ou o CT-e; voltar; "me leva até o recebedor" = navegar; ligar o GPS): comandar_app, e fale o que a ferramenta devolver em "diga" (com o caminhão andando, documentos e mensagens só abrem quando ele parar).
+- Recado livre para o CCO ("avisa o CCO que vou parar pra almoçar"): enviar_mensagem_cco com o texto fiel. Se for um problema (fila, avaria, atraso, acidente...), é ocorrência: use registrar_ocorrencia.
+- "Repete", "não entendi" ou "o que eu perdi": repita os ÚLTIMOS AVISOS do estado atual, em uma ou duas frases.
 - Se ele disser tchau, que já terminou ou pedir para encerrar a conversa: despeça-se numa frase curta e chame comandar_app com encerrar_conversa.
 - Se pedir para sair da conta: pergunte antes se ele confirma; só depois do sim chame comandar_app com sair_da_conta e confirmado=true.
 Depois de usar uma ferramenta, confirme em uma frase o que registrou.
@@ -110,6 +112,7 @@ def estado_atual(
     ligacao: Optional[Any],
     ultimos_eventos: list[str],
     pendencias: list[str] | None = None,
+    ultimos_avisos: list[str] | None = None,
 ) -> str:
     from .estadia import falar_horas
 
@@ -135,4 +138,6 @@ def estado_atual(
         linhas.append("PENDÊNCIAS (resolva na conversa, uma por vez): " + " ".join(pendencias))
     if ultimos_eventos:
         linhas.append("Últimos eventos: " + " | ".join(ultimos_eventos))
+    if ultimos_avisos:
+        linhas.append("ÚLTIMOS AVISOS ao motorista (para 'repete' ou 'o que eu perdi'): " + " | ".join(ultimos_avisos))
     return "\n".join(linhas)

@@ -83,3 +83,91 @@ async def test_sem_llm_sair_da_conta_nao_vira_inicio_de_viagem(client, container
     assert not eventos("retirada")
     r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("confirmo, sair da conta"), headers=AUTH)
     assert _acoes(ws) == [{"rota_id": 1, "acao": "logout"}]
+
+
+def _avisos(assinatura) -> list[dict]:
+    out = []
+    while not assinatura.fila.empty():
+        canal, msg = assinatura.fila.get_nowait()
+        if canal == "aviso_motorista":
+            out.append(json.loads(msg))
+    return out
+
+
+async def test_aviso_sem_conversa_vai_pro_app(client, container):
+    from app.servicos.sessoes import VozAgora
+
+    ws = container.eventos.assinar(rota_id=1)
+    entregue = await VozAgora(container).falar_motorista(1, "A central pergunta: a carga está lacrada?")
+    assert entregue is False
+    [aviso] = _avisos(ws)
+    assert aviso["texto"] == "A central pergunta: a carga está lacrada?" and aviso["pede_resposta"] is True
+    await VozAgora(container).falar_motorista(1, "Faltam uns 15 minutos.")
+    assert _avisos(ws)[0]["pede_resposta"] is False
+
+
+async def test_aviso_com_conversa_aberta_vai_pela_voz(client, container):
+    from app.servicos.sessoes import VozAgora
+
+    await _sessao(client)
+    ws = container.eventos.assinar(rota_id=1)
+    assert await VozAgora(container).falar_motorista(1, "Faltam uns 15 minutos.") is True
+    assert _avisos(ws) == []
+
+
+async def test_sem_llm_navega_liga_gps_e_repete(client, container):
+    from app.servicos.sessoes import VozAgora
+
+    container.settings.llm_api_key = ""
+    sid = await _sessao(client)
+    ws = container.eventos.assinar(rota_id=1)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("me leva até o recebedor"), headers=AUTH)
+    assert "mapa" in sse(r.text)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("liga o GPS"), headers=AUTH)
+    assert [a["acao"] for a in _acoes(ws)] == ["open_navigation", "start_gps"]
+    await VozAgora(container).falar_motorista(1, "O CCO respondeu: pode descarregar na doca 2.")
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("repete"), headers=AUTH)
+    assert "doca 2" in sse(r.text)
+
+
+async def test_sem_llm_documento_andando_avisa_que_abre_parado(client, container):
+    from app.infra.db import sessao
+    from app.infra.models import Rota
+
+    container.settings.llm_api_key = ""
+    sid = await _sessao(client)
+    with sessao() as s:
+        r = s.get(Rota, 1)
+        r.status = "em_transito"
+        s.add(r)
+        s.commit()
+    ws = container.eventos.assinar(rota_id=1)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("abre a nota fiscal"), headers=AUTH)
+    assert "parar" in sse(r.text)
+    assert _acoes(ws) == [{"rota_id": 1, "acao": "open_document", "documento": "NF-e"}]  # o app adia
+
+
+async def test_recado_ao_cco_abre_chamado_e_problema_vira_ocorrencia(client, container):
+    from sqlmodel import select
+
+    from app.infra.db import sessao
+    from app.infra.models import ChamadoCCO, Ocorrencia
+
+    container.settings.llm_api_key = ""
+    sid = await _sessao(client)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("avisa o CCO que vou parar pra almoçar"), headers=AUTH)
+    assert "Mandei pro CCO" in sse(r.text)
+    with sessao() as s:
+        [ch] = s.exec(select(ChamadoCCO)).all()
+        assert ch.tipo == "mensagem" and ch.descricao == "vou parar pra almoçar"
+        assert s.exec(select(Ocorrencia)).all() == []
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("avisa o CCO que a doca tá ocupada"), headers=AUTH)
+    with sessao() as s:
+        assert [o.tipo for o in s.exec(select(Ocorrencia)).all()] == ["doca_ocupada"]
+
+
+async def test_llm_recebe_a_ferramenta_de_recado(client, fake_llm):
+    sid = await _sessao(client)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("oi"), headers=AUTH)
+    nomes = {f["function"]["name"] for f in fake_llm.recebidas[-1]["ferramentas"]}
+    assert {"comandar_app", "enviar_mensagem_cco"} <= nomes

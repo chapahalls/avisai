@@ -122,7 +122,7 @@ class ChamadoCCO(SQLModel, table=True):
     """Pedido aberto pelo motorista para o CCO, com resposta falada pelo agente."""
     id: Optional[int] = Field(default=None, primary_key=True)
     rota_id: int = Field(foreign_key="rota.id", index=True)
-    tipo: str  # ocorrencia | chegada
+    tipo: str  # ocorrencia | chegada | mensagem
     assunto: str
     descricao: str
     km: Optional[float] = None

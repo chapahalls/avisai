@@ -296,6 +296,7 @@ Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi
 | `reset` | `{rota_id}` |
 | `chamado` | `{chamado: ChamadoCCO}`; abertura, lembrete, resposta ou timeout |
 | `acao_cliente` | `{rota_id, acao, tela?, documento?}`: comando do app do motorista pedido por voz (ver abaixo) |
+| `aviso_motorista` | `{id, rota_id, texto, prioridade, pede_resposta}`: o agente quis falar com o motorista sem conversa aberta; o app fala em voz local e, se for pergunta, abre a conversa |
 
 ### Comandos do app por voz (`acao_cliente`)
 O motorista pede ("abre o mapa", "mostra a nota fiscal", "volta", "tchau, AvisAI", "sair da conta") e o agente chama a ferramenta `comandar_app`. O backend publica só a intenção no `/ws`; o app nunca age a partir da transcrição. Sem LLM, a contingência reconhece os mesmos pedidos (`dominio/comandos_app.py`).
@@ -307,6 +308,12 @@ O motorista pede ("abre o mapa", "mostra a nota fiscal", "volta", "tchau, AvisAI
 | `go_back` | — | volta uma tela |
 | `end_voice` | — | espera o agente se despedir e encerra a conversa |
 | `logout` | — | sai da conta; o agente só manda depois de o motorista confirmar |
+| `open_navigation` | — | abre a rota até o destino no app de mapas |
+| `start_gps` | — | liga o GPS do aparelho |
+
+Documentos e mensagens pedem leitura: com a rota `em_transito` ou `aproximando`, o agente diz que abre quando o motorista parar, e o app espera.
+
+Também na voz do motorista: `enviar_mensagem_cco` abre um chamado `mensagem` com o recado livre (problemas continuam como ocorrência), e "repete" / "o que eu perdi" repete os últimos avisos (`ÚLTIMOS AVISOS` no estado do LLM e na contingência).
 
 Valores de `EventoStream.tipo` (enum `TipoEvento`):
 - sessão: `sessao_iniciada`;

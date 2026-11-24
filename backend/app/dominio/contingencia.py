@@ -30,6 +30,7 @@ class Estado:
     inicial_faltantes: Optional[list] = None
     checkin_faltantes: Optional[list] = None
     pergunta_central: Optional[str] = None
+    ultimos_avisos: Optional[list] = None
 
 
 @dataclass(frozen=True)
@@ -144,7 +145,12 @@ def _motorista(fala: str, t: str, e: Estado) -> Decisao:
     if cmd:
         if cmd.acao == "sair_da_conta" and not cmd.confirmado:
             return Decisao(comandos_app.PEDIR_CONFIRMACAO_SAIR)
-        return Decisao(comandos_app.fala_confirmacao(cmd), "comandar_app", cmd.args())
+        return Decisao(comandos_app.fala_confirmacao(cmd, e.status_rota), "comandar_app", cmd.args())
+    if comandos_app.pede_repetir(fala):
+        return Decisao(comandos_app.falar_avisos(e.ultimos_avisos or []))
+    recado = comandos_app.mensagem_cco(fala)
+    if recado and not any(_tem(normalizar(recado), *p) for _, p, _ in OCORRENCIAS):
+        return Decisao(f"Mandei pro CCO: {recado}. Te aviso quando responderem.", "enviar_mensagem_cco", {"texto": recado})
 
     if not pergunta and _tem(
         t,
