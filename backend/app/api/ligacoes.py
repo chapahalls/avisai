@@ -9,7 +9,7 @@ from ..infra.db import sessao
 from ..infra.models import ChamadaAgente, LigacaoRecebedor
 from ..integracoes import tokens
 from ..servicos import chamadas_agente, consultas, ligacoes, sessoes
-from .deps import c, erro_http
+from .deps import c, erro_http, limitar_ligacao
 from .schemas import Ligar
 
 router = APIRouter(tags=["recebedor"])
@@ -19,6 +19,7 @@ STATIC = Path(__file__).resolve().parents[2] / "static"
 @router.post("/rotas/{rota_id}/ligar-recebedor")
 async def ligar_recebedor(rota_id: int, body: Ligar = Ligar(), ct=Depends(c)):
     """Dispara a ligação ao recebedor na hora (atalho de demo)."""
+    limitar_ligacao(ct, rota_id)
     t = consultas.ultima_task(rota_id)
     try:
         return await ligacoes.ligar(ct, rota_id, body.motivo, t.id if t else None)

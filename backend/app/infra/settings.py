@@ -61,6 +61,19 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 150
     llm_shared_secret: str = ""
 
+    # Acesso: token JWT assinado no /auth/sso. Com auth_obrigatoria, as ações da central exigem papel "cco".
+    auth_obrigatoria: bool = False
+    auth_segredo: str = ""
+    auth_token_validade_h: float = 12
+    # Origens permitidas no CORS (painel web). "*" libera tudo; use só em desenvolvimento.
+    cors_origens: list[str] = [
+        "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173", "http://127.0.0.1:4173",
+        "http://localhost:8081", "http://localhost:19006",
+    ]
+    # Ligações disparadas à mão (CCO, atalhos de demo): no máximo N por rota a cada janela. 0 desliga.
+    ligacoes_manuais_max: int = 5
+    ligacoes_manuais_janela_s: float = 600
+
     # Público / túnel
     public_url: str = ""
     tunnel_metrics_url: str = ""

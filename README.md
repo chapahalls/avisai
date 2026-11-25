@@ -32,7 +32,7 @@ O backend coordena a operação que começa na viagem atribuída e termina na de
 | Tempo real | SSE do CCO e WebSocket para rota/motorista | sem replay/cursor garantido; clientes precisam reconciliar por REST |
 | Voz e chamadas | controle de sessão Agora, LLM com ferramentas, contingência local, cascata Twilio → Agora RTC | PSTN/RTC reais exigem credenciais, URL pública e permissões externas |
 | Arquivos | metadados no Postgres e binários em `ARQUIVOS_DIR` | não há autenticação/autorização ou versionamento de arquivos |
-| Identidade | perfis persistidos e token SSO MOCK | token não protege endpoints; CORS está amplo para a demonstração |
+| Identidade e acesso | perfis persistidos; `/auth/sso` emite **JWT assinado** (HS256, papel e validade); com `AUTH_OBRIGATORIA=true` as ações da central exigem papel `cco`; CORS só nas origens de `CORS_ORIGENS`; segredo do LLM comparado em tempo constante; limite de ligações manuais por rota | o login continua simulado (sem senha); leitura e eventos do app do motorista seguem abertos |
 
 Os frontends devem conservar essa distinção. Não use um campo ausente da API para gerar GPS, valor de estadia, documento, evento ou sucesso de telefonia no cliente.
 
@@ -85,6 +85,18 @@ Para refazer: `POST /rotas/1/reset`, ou o botão "Reset da demo" na `/teste`.
 
 ---
 
+## Segurança
+
+| O quê | Como | Onde |
+|---|---|---|
+| Token de acesso | `POST /auth/sso` devolve um JWT HS256 com `sub`, `email`, `role`, `driverId`, `iat` e `exp` (`AUTH_TOKEN_VALIDADE_H`, padrão 12 h), assinado com `AUTH_SEGREDO` | `infra/auth.py` |
+| Papel da central | com `AUTH_OBRIGATORIA=true`: publicar e atribuir rota, cadastrar motorista, assumir Task, responder chamado e ligar pelo CCO exigem `Authorization: Bearer <token>` com papel `cco` (401 sem token, 403 com papel errado). O token também pode ir em `?token=` | `api/deps.py` (`exigir_cco`) |
+| LLM próprio | a Agora manda `LLM_SHARED_SECRET` como Bearer; a comparação é exata e em tempo constante. Sem segredo, a api avisa no log | `api/llm.py` |
+| CORS | só as origens de `CORS_ORIGENS` (painel local e a demo publicada) | `main.py` |
+| Custo de telefonia | no máximo `LIGACOES_MANUAIS_MAX` ligações manuais por rota a cada `LIGACOES_MANUAIS_JANELA_S` (429 depois disso); as ligações automáticas do agente não entram no limite | `infra/auth.py`, `api/deps.py` |
+
+Testes em `tests/api/test_auth.py`. `GET /health` mostra `auth_obrigatoria` e `llm_protegido`.
+
 ## Arquitetura
 
 ```
@@ -126,7 +138,7 @@ Os fronts podem seguir o contrato do doc sem mudança. A api também responde na
 | `GET /api/documents` | NF-e e CT-e da rota; a consulta por voz também lista os nomes disponíveis |
 | `GET /cco/chamados?abertos=true` | chamados do motorista aguardando resposta do CCO |
 | `POST /cco/chamados/{id}/responder` | resposta do CCO; o agente fala a resposta ao motorista |
-| `POST /auth/sso` | SSO mock (token fake; papel `cco` se o e-mail tiver "cco") |
+| `POST /auth/sso` | login simulado (sem senha) que devolve um JWT assinado com o papel (`cco` ou `driver`) |
 
 Os `type` do contrato saem dos nossos eventos: `retirada`→`PickupConfirmed`, `relatorio`→`ReportSubmitted`, `campo_faltante`→`ReportFieldMissing`, `ocorrencia`→`OccurrenceCreated`, `aproximacao`→`ApproachDetected`, `aviso_recebedor`→`ReceiverNotified`, `resposta_recebedor`/`ligacao_nao_atendida`→`ReceiverCallResult` (`payload.answered`), `chegada`→`ArrivalRegistered`, `task_criada`→`TaskCreated`, `notificacao_cco`/`escalada_recebedor`→`TaskEscalated`, `task_confirmada`→`TaskAcknowledged`, `descarga`→`UnloadConfirmed`.
 
@@ -412,7 +424,7 @@ Fonte: docs da Agora, via o MCP `mcp.agora.io` e o OpenAPI v2.
 
 ## Simulado / pré-existente (E5/E8)
 - **Rastreador do caminhão simulado:** o simulador manda um segundo GPS (`fonte=rastreador`) com ruído de cerca de 10 m, que serve de dupla prova. Integração real com Sascar, Omnilink etc. fica fora.
-- **Documentos, SSO e métricas:** `/api/documents` devolve NF-e e CT-e fictícios; `/auth/sso` devolve token fake; a latência em `/api/metrics` mede só o nosso LLM até o primeiro trecho (não inclui ASR, TTS e rede).
+- **Documentos, SSO e métricas:** `/api/documents` devolve NF-e e CT-e fictícios; `/auth/sso` não pede senha (o token é real, o login é simulado); a latência em `/api/metrics` mede só o nosso LLM até o primeiro trecho (não inclui ASR, TTS e rede).
 - **GPS simulado:** `scripts/simular_rota.py` move o caminhão por um trajeto reto de Jundiaí a Campinas, chamando `POST /rotas/{id}/posicao`. Em produção, a posição viria do GPS do celular do motorista pelo mesmo endpoint.
 - **Ligação ao recebedor (plano B):** na demo, o recebedor atende por uma página web (`/recebedor`) num canal Agora RTC, não por telefone. A ligação telefônica real (plano A, `POST /call`) está implementada e testada com mock, mas desligada: o time não tem número importado na Agora.
 - **Seed fictício:** a transportadora, o motorista, a placa, a NF, o recebedor e os telefones são inventados (`backend/app/seed.py`).

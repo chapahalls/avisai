@@ -5,7 +5,6 @@ Rotas do `agent-server` do doc em cima dos serviços deste backend:
   POST /events (outbox idempotente) · GET /events (DomainEvent)
   GET /api/route · /api/receivers · /api/documents · /api/metrics · POST /auth/sso
 """
-import uuid
 from datetime import datetime
 from typing import Any, Optional
 
@@ -21,7 +20,8 @@ from ..infra.eventos import serial
 from ..infra.models import Evento, SessaoAgente
 from ..integracoes import tokens
 from ..servicos import chamados, consultas, ligacoes, metricas, publicacao, reportes, sessoes, tasks, usuarios
-from .deps import c, erro_http
+from ..infra import auth
+from .deps import c, erro_http, limitar_ligacao
 from .schemas import DomainEventIn, SsoOut
 
 router = APIRouter(tags=["compat (docs/arquitetura-avisai.md)"])
@@ -156,6 +156,7 @@ class CallReceiver(BaseModel):
 @router.post("/call/receiver")
 async def call_receiver(body: CallReceiver = CallReceiver(), ct=Depends(c)):
     rid = _rota_id(body.tripId)
+    limitar_ligacao(ct, rid)
     t = consultas.ultima_task(rid)
     try:
         lig = await ligacoes.ligar(ct, rid, body.reason, t.id if t else None)
@@ -269,10 +270,11 @@ class SsoIn(BaseModel):
 
 
 @router.post("/auth/sso", response_model=SsoOut)
-def auth_sso(body: SsoIn = SsoIn()):
-    """Login mock: e-mail cadastrado seleciona um perfil persistido e recebe token fictício."""
+def auth_sso(body: SsoIn = SsoIn(), ct=Depends(c)):
+    """Login simulado (sem senha): o e-mail escolhe um perfil do seed. O token é um JWT assinado de verdade,
+    com papel e validade; com AUTH_OBRIGATORIA=true ele é exigido nas ações da central."""
     try:
         profile = usuarios.por_email(body.email if body.email is not None else "carlos@rotasul.test")
     except Exception as error:
         raise erro_http(error)
-    return {"token": f"mock-{uuid.uuid4().hex}", "user": profile}
+    return {"token": auth.emitir(ct.settings, profile), "user": profile}

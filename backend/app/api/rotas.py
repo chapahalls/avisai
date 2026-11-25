@@ -6,7 +6,7 @@ from ..infra.db import sessao
 from ..infra.models import (ChamadaAgente, ChamadoCCO, Estadia, Evento, EventoGeo, LigacaoRecebedor, MensagemMotorista,
                             Motorista, Ocorrencia, Reporte, Rota, SessaoAgente, SolicitacaoCentral, TaskCCO)
 from ..servicos import central, consultas, mensagens, publicacao, rotas, sessoes, tasks
-from .deps import c, erro_http
+from .deps import c, erro_http, exigir_cco
 from .schemas import Atribuir, Descarga, NovaMensagemMotorista, NovaRota, NovaSolicitacao, NovoMotorista, Posicao, PosicaoOut
 
 router = APIRouter(tags=["rotas"])
@@ -133,7 +133,7 @@ def chamados_da_rota(rota_id: int):
 
 # ---------------- publicação de rota e motoristas (CCO) ----------------
 
-@router.post("/rotas")
+@router.post("/rotas", dependencies=[Depends(exigir_cco)])
 async def publicar_rota(body: NovaRota, ct=Depends(c)):
     """Transportadora publica a rota (trajeto simulado) e, se vier motorista_id, já atribui."""
     try:
@@ -143,7 +143,7 @@ async def publicar_rota(body: NovaRota, ct=Depends(c)):
     return rota_publica(consultas.rota(r.id), com_trajeto=True)
 
 
-@router.post("/rotas/{rota_id}/atribuir")
+@router.post("/rotas/{rota_id}/atribuir", dependencies=[Depends(exigir_cco)])
 async def atribuir_rota(rota_id: int, body: Atribuir, ct=Depends(c)):
     """Atribui a rota a um motorista: gera RouteAssigned e o app (WS ?motorista_id=) recebe na hora."""
     try:
@@ -158,7 +158,7 @@ def listar_motoristas():
     return publicacao.motoristas()
 
 
-@router.post("/motoristas")
+@router.post("/motoristas", dependencies=[Depends(exigir_cco)])
 def criar_motorista(body: NovoMotorista):
     try:
         return publicacao.criar_motorista(body.nome, body.telefone_e164, body.email, body.empresa_id)

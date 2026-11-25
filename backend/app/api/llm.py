@@ -1,4 +1,5 @@
 """Peça 3: endpoint OpenAI-compatível chamado pela nuvem da Agora (via túnel)."""
+import hmac
 import json
 import time
 import uuid
@@ -22,7 +23,8 @@ def _chunk(cid: str, modelo: str, delta: dict, fim=None) -> str:
 @router.post("/chat/completions", include_in_schema=False)
 async def chat_completions(request: Request, ct=Depends(c)):
     segredo = ct.settings.llm_shared_secret
-    if segredo and segredo not in request.headers.get("authorization", ""):
+    recebido = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    if segredo and not hmac.compare_digest(recebido.encode(), segredo.encode()):
         raise HTTPException(401, "segredo inválido")
     corpo = await request.json()
     sa = conversa.sessao_da_requisicao(request.headers.get("x-avisai-sessao") or request.query_params.get("sessao"))
