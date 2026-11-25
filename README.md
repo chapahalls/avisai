@@ -24,6 +24,19 @@ Licença: [MIT](LICENSE). As tags `v1.0-entrega` a `v1.3-entrega` marcam as vers
 
 Toda a voz roda na **Agora Conversational AI**. O áudio vai do aparelho direto para a nuvem da Agora; este backend é o plano de controle: tokens, `/join`, `/leave`, `/speak` e `/call`, o LLM próprio com ferramentas e as regras de negócio.
 
+## Para o júri
+
+| | |
+|---|---|
+| **Trilha** | Logística & automação |
+| **Em uma frase** | Um agente de voz que avisa o recebedor antes da chegada, conta a estadia do caminhão parado (Lei 11.442) e só chama a central quando alguém precisa decidir. |
+| **Ver sem instalar nada** | [tour em vídeo de 1 min](https://github.com/rodarglobal/rodar-web/blob/main/docs/assets/readme/tour.mp4) do site e do painel · [validação ponta a ponta com a api real: 33 de 33 etapas](https://github.com/rodarglobal/rodar-backend/blob/main/evidence/validacao.md) · [telas do app](https://github.com/rodarglobal/rodar-mobile#telas-do-aplicativo) |
+| **Repositórios** | [rodar-backend](https://github.com/rodarglobal/rodar-backend) (este) · [rodar-web](https://github.com/rodarglobal/rodar-web) · [rodar-mobile](https://github.com/rodarglobal/rodar-mobile) |
+| **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 512 testes automatizados: 299 no backend, 127 no web, 86 no mobile |
+| **Segurança** | JWT assinado no login, papel `cco` nas ações da central, CORS restrito, segredo do LLM e limite de ligações ([detalhes](https://github.com/rodarglobal/rodar-backend#segurança)) |
+| **O que é simulado** | login sem senha, GPS da rota, documentos fiscais e o modo Demo do painel: [lista completa](#simulado--pré-existente-e5e8) |
+<!-- Demo publicada e vídeo de 3 min do Hack Brasil: incluir as duas linhas aqui antes de 30/11. -->
+
 ## Propósito, fronteiras e estado atual
 
 O backend coordena a operação que começa na viagem atribuída e termina na descarga: recebe posições, detecta aproximação/chegada, cria Tasks, calcula estadia, registra chamadas, persiste mensagens/chamados e entrega atualizações aos dois frontends. Ele é adequado para demonstrar esse fluxo com dados fictícios e contratos integráveis, mas não deve ser tratado como uma plataforma pronta para operação real.
