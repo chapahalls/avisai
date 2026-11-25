@@ -2,7 +2,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Optional
 
 from ..dominio.enums import TipoEvento
@@ -14,6 +14,10 @@ log = logging.getLogger("avisai.eventos")
 
 def serial(o: Any) -> Any:
     if isinstance(o, datetime):
+        # Timestamps sem timezone já representam UTC no contrato legado. Os
+        # aware são normalizados para UTC antes de acrescentar o sufixo Z.
+        if o.tzinfo is not None:
+            o = o.astimezone(UTC).replace(tzinfo=None)
         return o.isoformat() + "Z"
     if hasattr(o, "model_dump"):
         return o.model_dump()

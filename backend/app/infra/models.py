@@ -7,8 +7,8 @@ from sqlmodel import Field, SQLModel
 
 
 def agora() -> datetime:
-    """UTC sem tzinfo (o relógio injetável dos serviços usa o mesmo formato)."""
-    return datetime.now(UTC).replace(tzinfo=None)
+    """Retorna o horário atual em UTC com timezone explícito."""
+    return datetime.now(UTC)
 
 
 class Empresa(SQLModel, table=True):

@@ -1,11 +1,11 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-sqlmodel==0.0.22
-psycopg[binary]==3.2.3
-alembic==1.14.0
-pydantic-settings==2.7.0
-httpx==0.28.1
-python-multipart==0.0.20
-PyJWT==2.10.1
+fastapi
+uvicorn[standard]
+sqlmodel
+psycopg[binary]
+alembic
+pydantic-settings
+httpx
+python-multipart
+PyJWT
 # SDK oficial da Agora: usamos o gerador de AccessToken2 (agora_agent.agentkit.token)
-agora-agents==2.15.0
+agora-agents

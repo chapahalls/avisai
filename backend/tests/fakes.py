@@ -1,7 +1,7 @@
 """Fakes das portas (portas.py) para testes de serviço e de API."""
 import itertools
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Optional
 
 from app.integracoes.agora_rest import AgoraErro
@@ -83,7 +83,7 @@ def tool_call(nome: str, args: str, cid: str = "call_1") -> dict:
 
 @dataclass
 class RelogioFixo:
-    t: datetime = field(default_factory=lambda: datetime(2026, 11, 22, 14, 0, 0))
+    t: datetime = field(default_factory=lambda: datetime(2026, 11, 22, 14, 0, 0, tzinfo=UTC))
 
     def agora(self) -> datetime:
         return self.t

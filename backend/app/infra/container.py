@@ -14,7 +14,7 @@ log = logging.getLogger("avisai.container")
 
 class RelogioSistema:
     def agora(self) -> datetime:
-        return datetime.now(UTC).replace(tzinfo=None)
+        return datetime.now(UTC)
 
 
 @dataclass

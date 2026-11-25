@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+import uvicorn
 
 from .api import agentes, arquivos, cco, compat, ligacoes, llm, rotas, usuarios
 from .infra.upload_limit import UploadLimitMiddleware
@@ -61,3 +62,6 @@ def health():
         "auth_obrigatoria": s.auth_obrigatoria,
         "llm_protegido": bool(s.llm_shared_secret),
     }
+
+if __name__ == "__main__":
+    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=8000, reload=True)
