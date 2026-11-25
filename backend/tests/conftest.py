@@ -11,7 +11,7 @@ from app.infra.db import engine
 from app.infra.eventos import Eventos
 from app.infra.settings import Settings
 from app.seed import seed
-from tests.fakes import FakeAgora, FakeLLM, RelogioFixo
+from tests.fakes import FakeAgora, FakeLLM, FakeTranscritor, RelogioFixo
 
 APP_ID = "0123456789abcdef0123456789abcdef"
 CERT = "fedcba9876543210fedcba9876543210"
@@ -73,13 +73,20 @@ def fake_llm() -> FakeLLM:
 
 
 @pytest.fixture
+def fake_transcritor() -> FakeTranscritor:
+    return FakeTranscritor()
+
+
+@pytest.fixture
 def relogio() -> RelogioFixo:
     return RelogioFixo()
 
 
 @pytest.fixture
-async def container(settings, fake_agora, fake_llm, relogio):
-    c = ct.Container(settings=settings, agora=fake_agora, llm=fake_llm, relogio=relogio, eventos=Eventos())
+async def container(settings, fake_agora, fake_llm, fake_transcritor, relogio, tmp_path):
+    settings.falas_offline_dir = str(tmp_path / "falas_offline")
+    c = ct.Container(settings=settings, agora=fake_agora, llm=fake_llm, transcritor=fake_transcritor,
+                     relogio=relogio, eventos=Eventos())
     ct.definir(c)
     yield c
     pendentes = [t for t in c.tarefas.values() if not t.done()]

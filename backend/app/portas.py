@@ -22,6 +22,12 @@ class LLM(Protocol):
         ...
 
 
+class Transcritor(Protocol):
+    """Fala gravada → texto (OpenAI-compatível). Implementação: integracoes/openai_stt.py."""
+
+    async def transcrever(self, audio: bytes, nome: str, tipo_mime: str) -> str: ...
+
+
 class Relogio(Protocol):
     def agora(self) -> datetime: ...
 

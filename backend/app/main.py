@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .api import agentes, arquivos, cco, compat, ligacoes, llm, rotas, usuarios
+from .api import agentes, arquivos, cco, compat, falas_offline, ligacoes, llm, rotas, usuarios
 from .infra.upload_limit import UploadLimitMiddleware
 from .infra import container as ct
 from .infra.settings import Settings
@@ -34,6 +34,7 @@ app.add_middleware(CORSMiddleware, allow_origins=_cors, allow_methods=["*"], all
                    allow_credentials="*" not in _cors)
 app.add_middleware(UploadLimitMiddleware)
 app.include_router(arquivos.router)
+app.include_router(falas_offline.router)
 app.include_router(usuarios.router)
 app.include_router(agentes.router)
 app.include_router(ligacoes.router)
