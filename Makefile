@@ -1,5 +1,5 @@
 # Atalhos: tudo roda dentro do Docker.
-.PHONY: up down logs test migrate revision seed sim url psql twilio validar
+.PHONY: up down logs test migrate revision seed sim url psql twilio validar avaliar
 
 up:
 	docker compose up -d --build db api tunnel
@@ -39,3 +39,7 @@ twilio:
 validar:
 	mkdir -p evidence
 	docker compose exec -T api python /scripts/validar_fluxos.py > evidence/validacao.md
+
+# Conversas difíceis contra o LLM de verdade (reinicia a rota usada; padrão: rota 1)
+avaliar:
+	docker compose exec -T api python /scripts/avaliar_conversas.py $(ARGS)

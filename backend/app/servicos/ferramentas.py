@@ -1,4 +1,5 @@
 """Ferramentas do LLM: registro {nome: Ferramenta}. Nova ferramenta = nova entrada (aberto/fechado)."""
+import logging
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
@@ -7,6 +8,7 @@ from ..infra.models import SessaoAgente
 from . import chamadas_agente, chamados, central, ligacoes, mensagens, reportes, tasks
 
 Handler = Callable[..., Awaitable[dict]]
+log = logging.getLogger("avisai.ferramentas")
 
 
 @dataclass(frozen=True)
@@ -28,7 +30,13 @@ async def _chegada(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
 async def _ocorrencia(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
     from ..dominio import ocorrencias as roteiro
 
+    from ..dominio.contingencia import classificar_ocorrencia
+
     descricao = str(args.get("descricao") or fala).strip()
+    tipo = args.get("tipo") or "outro"
+    if tipo == "outro":
+        # O LLM às vezes chama de "outro" um pneu furado; o tipo certo traz as perguntas certas.
+        tipo = classificar_ocorrencia(f"{descricao} {fala or ''}") or "outro"
     km = args.get("km")
     try:
         km = float(km) if km is not None else None
@@ -37,7 +45,7 @@ async def _ocorrencia(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
     if not descricao:
         return {"ok": False, "erro": "Descrição da ocorrência ausente."}
     o = tasks.registrar_ocorrencia(
-        c, sa.rota_id, args.get("tipo", "outro"), descricao, transcricao=fala, km=km, rodovia=args.get("rodovia"),
+        c, sa.rota_id, tipo, descricao, transcricao=fala, km=km, rodovia=args.get("rodovia"),
     )
     chamado = await chamados.abrir_ocorrencia(c, sa.rota_id, o, transcricao=fala)
     return {
@@ -51,7 +59,12 @@ async def _ocorrencia(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
 
 
 async def _detalhar(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
-    return tasks.detalhar_ocorrencia(c, sa.rota_id, args, transcricao=fala)
+    from ..dominio import ocorrencias as roteiro
+
+    # O LLM às vezes passa só um dos campos que a fala respondeu ("a carga tá inteira, consigo seguir").
+    aberta = tasks.ocorrencia_aberta(sa.rota_id)
+    extras = roteiro.detectar([f for f in (aberta.faltantes if aberta else []) if f not in args], fala)
+    return tasks.detalhar_ocorrencia(c, sa.rota_id, {**extras, **args}, transcricao=fala)
 
 
 async def _descarga(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
@@ -72,12 +85,44 @@ async def _retirada(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
             "proximo": "peça o relatório inicial: como está o caminhão e a carga coletada"}
 
 
+def _falas_recentes(rota_id: int, fala: str, n: int = 4) -> str:
+    """As últimas falas do motorista (ele pode ter dito o campo um turno antes)."""
+    from sqlmodel import select
+
+    from ..dominio.enums import TipoEvento
+    from ..infra.db import sessao
+    from ..infra.models import Evento
+
+    with sessao() as s:
+        evs = s.exec(select(Evento).where(Evento.rota_id == rota_id, Evento.tipo == str(TipoEvento.FALA_MOTORISTA))
+                     .order_by(Evento.id.desc()).limit(n)).all()
+    return " | ".join([fala or ""] + [e.mensagem for e in evs])
+
+
+def _relatorio(c, sa: SessaoAgente, tipo: str, args: dict, fala: str) -> dict:
+    """Grava só o que o motorista disse nesta fala; o resto volta como pergunta."""
+    from ..dominio.fundamentacao import so_o_que_ele_disse
+
+    aceitos, recusados = so_o_que_ele_disse(args, _falas_recentes(sa.rota_id, fala))
+    if recusados:
+        log.info("relatório %s: campos sem base na fala descartados: %s", tipo, recusados)
+    if not aceitos:
+        faltam = reportes.faltantes_abertos(sa.rota_id, tipo) or list(reportes.CAMPOS[tipo])
+        return {"ok": False, "erro": "O motorista ainda não disse isso.",
+                "pergunte_agora": "Pergunte só: " + ", ".join(reportes.ROTULOS[k] for k in faltam) + "."}
+    res = reportes.registrar(c, sa.rota_id, tipo, aceitos, fala)
+    if recusados:
+        res["nao_registrado"] = recusados
+        res["instrucao"] = "Esses campos ele não disse: pergunte antes de registrar."
+    return res
+
+
 async def _relatorio_inicial(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
-    return reportes.registrar(c, sa.rota_id, "inicial", args, fala)
+    return _relatorio(c, sa, "inicial", args, fala)
 
 
 async def _checkin(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
-    return reportes.registrar(c, sa.rota_id, "checkin", args, fala)
+    return _relatorio(c, sa, "checkin", args, fala)
 
 
 async def _documento(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
@@ -226,7 +271,8 @@ REGISTRO: dict[str, Ferramenta] = {
     "registrar_ocorrencia": Ferramenta(
         Papel.MOTORISTA, "Registra uma ocorrência e abre um chamado para o CCO. Use km e rodovia somente se o motorista informar.",
         {"type": "object", "properties": {
-            "tipo": {"type": "string", "enum": ["fila", "doca_ocupada", "documento", "avaria", "atraso", "recusa", "acidente", "outro"]},
+            "tipo": {"type": "string", "enum": ["fila", "doca_ocupada", "documento", "avaria", "atraso", "recusa", "acidente", "outro"],
+                     "description": "avaria = pneu, motor, freio, quebra, vazamento; acidente = batida, colisão; outro só se nada servir."},
             "descricao": {"type": "string", "description": "Descrição curta e fiel do problema."},
             "km": {"type": "number", "description": "Quilômetro informado pelo motorista."},
             "rodovia": {"type": "string", "description": "Rodovia, por exemplo BR-381."}},

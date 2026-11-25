@@ -69,10 +69,11 @@ def test_saudacao_resume_situacao():
     assert d.ferramenta is None and "Carlos" in d.texto and "parado" in d.texto
 
 
-def test_nao_entendeu_explica_o_que_faz():
+def test_nao_entendeu_pede_para_repetir_com_exemplos():
     d = ct.decidir("motorista", "o senhor é o editor que investigamos", VAZIO)
     assert d.ferramenta is None
-    assert "chegada" in d.texto and "ocorrência" in d.texto
+    # Pede para repetir com exemplos curtos, em vez de listar tudo o que o agente faz.
+    assert "repetir" in d.texto and "cheguei" in d.texto and "fila" in d.texto
 
 
 def test_acentos_e_maiusculas_nao_atrapalham():
@@ -163,3 +164,73 @@ def test_problema_na_portaria_e_ocorrencia_nao_chegada():
     d = ct.decidir("motorista", "Tem uma fila de caminhões aqui na portaria", PARADO)
     assert d.ferramenta == "registrar_ocorrencia" and d.args["tipo"] == "fila"
     assert "caminhões" in d.texto  # já pergunta quantos na frente
+
+
+# ---------- contexto da conversa: não se perder ----------
+from dataclasses import replace as _replace
+
+
+def test_resposta_curta_a_central_pede_confirmacao_e_o_sim_manda():
+    d = ct.decidir("motorista", "Certo.", CENTRAL)
+    assert d.ferramenta is None and "Respondo pra central" in d.texto and "Certo" in d.texto
+    depois = _replace(CENTRAL, ultima_fala_agente=d.texto)
+    d2 = ct.decidir("motorista", "sim", depois)
+    assert d2.ferramenta == "responder_central" and d2.args["resposta"] == "Certo"
+    d4 = ct.decidir("motorista", "sim, tá lacrada", depois)
+    assert d4.args["resposta"] == "sim, tá lacrada"
+    d3 = ct.decidir("motorista", "não", depois)
+    assert d3.ferramenta is None and "Qual é a resposta" in d3.texto
+
+
+def test_sem_entender_volta_para_a_pendencia():
+    d = ct.decidir("motorista", "hmm sei lá", NA_ORIGEM)
+    assert d.texto == "Não peguei. Confirma a retirada da carga?"
+    d = ct.decidir("motorista", "hmm sei lá", CHECKIN)
+    assert d.texto.startswith("Não peguei. Me conta:")
+
+
+def test_sem_entender_e_sem_pendencia_nao_lista_tudo_nem_repete_igual():
+    d = ct.decidir("motorista", "hmm sei lá", VAZIO)
+    assert d.texto.startswith("Não peguei. Pode repetir")
+    d2 = ct.decidir("motorista", "hmm", _replace(VAZIO, ultima_fala_agente=d.texto))
+    assert d2.texto == "Ainda não entendi. Fala com outras palavras?"
+
+
+PLANEJADA = Estado(nome="Carlos", destino="Mercadão Campinas", status_rota="planejada")
+
+
+@pytest.mark.parametrize("fala", ["peguei a carga já, bora", "carreguei, partiu", "tô carregado"])
+def test_falas_naturais_de_inicio_de_viagem(fala):
+    d = ct.decidir("motorista", fala, PLANEJADA)
+    assert d.ferramenta == "confirmar_retirada" and "como tá o caminhão" in d.texto
+
+
+def test_bora_sozinho_em_viagem_nao_reinicia_nada():
+    assert ct.decidir("motorista", "bora", VAZIO).ferramenta is None
+
+
+def test_recado_sem_texto_pergunta_e_a_proxima_fala_vira_o_recado():
+    d = ct.decidir("motorista", "manda pro CCO", VAZIO)
+    assert d.ferramenta is None and d.texto == "O que eu mando pro CCO?"
+    d2 = ct.decidir("motorista", "vou parar pra almoçar", _replace(VAZIO, ultima_fala_agente=d.texto))
+    assert d2.ferramenta == "enviar_mensagem_cco" and d2.args == {"texto": "vou parar pra almoçar"}
+    d3 = ct.decidir("motorista", "tem fila enorme aqui", _replace(VAZIO, ultima_fala_agente=d.texto))
+    assert d3.ferramenta == "registrar_ocorrencia"  # problema continua ocorrência
+
+
+def test_repete_repete_a_ultima_fala_e_o_que_eu_perdi_traz_avisos():
+    e = _replace(VAZIO, ultima_fala_agente="Faltam uns 15 minutos.", ultimos_avisos=["a", "b", "O CCO respondeu: doca 2."])
+    assert ct.decidir("motorista", "repete", e).texto == "Faltam uns 15 minutos."
+    assert "doca 2" in ct.decidir("motorista", "o que eu perdi?", e).texto
+
+
+def test_o_que_voce_faz():
+    d = ct.decidir("motorista", "o que você faz?", VAZIO)
+    assert d.ferramenta is None and "ocorrência" in d.texto
+
+
+def test_uma_fala_responde_varias_perguntas_da_ocorrencia():
+    e = _replace(VAZIO, ocorrencia_tipo="avaria", ocorrencia_faltantes=["o_que", "consegue_seguir", "carga"])
+    d = ct.decidir("motorista", "furou o pneu, mas a carga tá inteira e consigo seguir", e)
+    assert d.ferramenta == "detalhar_ocorrencia"
+    assert set(d.args) == {"o_que", "consegue_seguir", "carga"} and d.args["consegue_seguir"] == "sim"

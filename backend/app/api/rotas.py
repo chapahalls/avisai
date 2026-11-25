@@ -72,7 +72,11 @@ async def reset(rota_id: int, ct=Depends(c)):
         r = s.get(Rota, rota_id)
         if not r:
             raise erro_http(consultas.NaoEncontrado("rota não existe"))
-        for modelo in (Evento, EventoGeo, Estadia, Ocorrencia, Reporte, SolicitacaoCentral, ChamadoCCO,
+        # Chamados apontam para ocorrências: saem antes, senão a chave estrangeira barra o reset.
+        for x in s.exec(select(ChamadoCCO).where(ChamadoCCO.rota_id == rota_id)).all():
+            s.delete(x)
+        s.commit()
+        for modelo in (Evento, EventoGeo, Estadia, Ocorrencia, Reporte, SolicitacaoCentral,
                        MensagemMotorista, ChamadaAgente):
             for x in s.exec(select(modelo).where(modelo.rota_id == rota_id)).all():
                 s.delete(x)
