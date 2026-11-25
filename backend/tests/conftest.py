@@ -59,6 +59,8 @@ def settings() -> Settings:
         ligacao_poll_s=0.05,
         encerrar_ligacao_apos_s=0.01,
         estadia_aceleracao=1,
+        # Os testes de fluxo exercitam regras de negócio; tests/api/test_auth.py liga o login e testa o acesso.
+        auth_obrigatoria=False,
     )
 
 

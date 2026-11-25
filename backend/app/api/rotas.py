@@ -6,7 +6,7 @@ from ..infra.db import sessao
 from ..infra.models import (ChamadaAgente, ChamadoCCO, Estadia, Evento, EventoGeo, LigacaoRecebedor, MensagemMotorista,
                             Motorista, Ocorrencia, Reporte, Rota, SessaoAgente, SolicitacaoCentral, TaskCCO)
 from ..servicos import central, consultas, mensagens, publicacao, rotas, sessoes, tasks
-from .deps import c, erro_http, exigir_cco
+from .deps import c, erro_http, exigir_acesso_rota, exigir_cco
 from .schemas import Atribuir, Descarga, NovaMensagemMotorista, NovaRota, NovaSolicitacao, NovoMotorista, Posicao, PosicaoOut
 
 router = APIRouter(tags=["rotas"])
@@ -36,7 +36,7 @@ def obter(rota_id: int):
         raise erro_http(e)
 
 
-@router.post("/rotas/{rota_id}/posicao", response_model=PosicaoOut)
+@router.post("/rotas/{rota_id}/posicao", response_model=PosicaoOut, dependencies=[Depends(exigir_acesso_rota)])
 async def posicao(rota_id: int, body: Posicao, ct=Depends(c)):
     """GPS do celular (fonte=celular, dispara as geocercas) ou do rastreador do caminhão (fonte=rastreador, prova)."""
     try:
@@ -45,7 +45,7 @@ async def posicao(rota_id: int, body: Posicao, ct=Depends(c)):
         raise erro_http(e)
 
 
-@router.post("/rotas/{rota_id}/chegada")
+@router.post("/rotas/{rota_id}/chegada", dependencies=[Depends(exigir_acesso_rota)])
 async def chegada(rota_id: int, ct=Depends(c)):
     """Chegada manual (atalho de demo). Idempotente."""
     try:
@@ -54,7 +54,7 @@ async def chegada(rota_id: int, ct=Depends(c)):
         raise erro_http(e)
 
 
-@router.post("/rotas/{rota_id}/descarga")
+@router.post("/rotas/{rota_id}/descarga", dependencies=[Depends(exigir_acesso_rota)])
 async def descarga(rota_id: int, body: Descarga = Descarga(), ct=Depends(c)):
     """CCO confirma a descarga: encerra estadia e Task."""
     try:
@@ -63,7 +63,7 @@ async def descarga(rota_id: int, body: Descarga = Descarga(), ct=Depends(c)):
         raise erro_http(e)
 
 
-@router.post("/rotas/{rota_id}/reset")
+@router.post("/rotas/{rota_id}/reset", dependencies=[Depends(exigir_acesso_rota)])
 async def reset(rota_id: int, ct=Depends(c)):
     """Volta a rota ao início para repetir a demo."""
     for t in list(ct.tarefas.values()):
@@ -96,7 +96,7 @@ async def reset(rota_id: int, ct=Depends(c)):
     return {"ok": True}
 
 
-@router.post("/rotas/{rota_id}/solicitacoes")
+@router.post("/rotas/{rota_id}/solicitacoes", dependencies=[Depends(exigir_cco)])
 async def nova_solicitacao(rota_id: int, body: NovaSolicitacao, ct=Depends(c)):
     """Pedido da central: o agente pergunta ao motorista e a resposta volta estruturada."""
     try:
@@ -115,7 +115,7 @@ def mensagens_motorista(rota_id: int):
     return [x.model_dump() for x in mensagens.listar(rota_id)]
 
 
-@router.post("/rotas/{rota_id}/mensagens")
+@router.post("/rotas/{rota_id}/mensagens", dependencies=[Depends(exigir_cco)])
 async def enviar_mensagem_motorista(rota_id: int, body: NovaMensagemMotorista, ct=Depends(c)):
     """Ação da CCO: a mesma função exposta ao LLM fala e audita a mensagem."""
     try:

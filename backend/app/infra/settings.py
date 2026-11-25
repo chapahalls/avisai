@@ -61,8 +61,9 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 150
     llm_shared_secret: str = ""
 
-    # Acesso: token JWT assinado no /auth/sso. Com auth_obrigatoria, as ações da central exigem papel "cco".
-    auth_obrigatoria: bool = False
+    # Acesso: token JWT assinado no /auth/sso. Ligado por padrão: escrita exige token, ações da central exigem
+    # papel "cco" e o motorista só mexe na própria rota. Desligue (AUTH_OBRIGATORIA=false) só em desenvolvimento.
+    auth_obrigatoria: bool = True
     auth_segredo: str = ""
     auth_token_validade_h: float = 12
     # Origens permitidas no CORS (painel web). "*" libera tudo; use só em desenvolvimento.

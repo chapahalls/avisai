@@ -9,14 +9,14 @@ from ..infra.db import sessao
 from ..infra.models import ChamadaAgente, LigacaoRecebedor
 from ..integracoes import tokens
 from ..servicos import chamadas_agente, consultas, ligacoes, sessoes
-from .deps import c, erro_http, limitar_ligacao
+from .deps import c, erro_http, exigir_acesso_rota, exigir_cco, limitar_ligacao
 from .schemas import Ligar
 
 router = APIRouter(tags=["recebedor"])
 STATIC = Path(__file__).resolve().parents[2] / "static"
 
 
-@router.post("/rotas/{rota_id}/ligar-recebedor")
+@router.post("/rotas/{rota_id}/ligar-recebedor", dependencies=[Depends(exigir_acesso_rota)])
 async def ligar_recebedor(rota_id: int, body: Ligar = Ligar(), ct=Depends(c)):
     """Dispara a ligação ao recebedor na hora (atalho de demo)."""
     limitar_ligacao(ct, rota_id)
@@ -82,7 +82,7 @@ def chamada_operador_atual(ct=Depends(c)):
     return {"chamada": _operador_publico(ct, chamada) if chamada else None}
 
 
-@router.post("/operador/chamadas/{chamada_id}/atender")
+@router.post("/operador/chamadas/{chamada_id}/atender", dependencies=[Depends(exigir_cco)])
 async def atender_chamada_operador(chamada_id: int, ct=Depends(c)):
     try:
         return (await chamadas_agente.atender(ct, chamada_id)).model_dump()

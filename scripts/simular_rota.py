@@ -15,9 +15,15 @@ import time
 import urllib.request
 
 
+TOKEN = ""
+
+
 def req(metodo: str, url: str, corpo: dict | None = None) -> dict:
     dados = json.dumps(corpo).encode() if corpo is not None else None
-    r = urllib.request.Request(url, data=dados, method=metodo, headers={"Content-Type": "application/json"})
+    h = {"Content-Type": "application/json"}
+    if TOKEN:
+        h["Authorization"] = f"Bearer {TOKEN}"
+    r = urllib.request.Request(url, data=dados, method=metodo, headers=h)
     with urllib.request.urlopen(r, timeout=30) as resp:
         return json.loads(resp.read() or b"{}")
 
@@ -33,6 +39,12 @@ def main() -> None:
     ap.add_argument("--sem-rastreador", action="store_true", help="manda só o GPS do celular")
     ap.add_argument("--divergir", action="store_true", help="rastreador ~1 km longe na chegada (testa a divergência)")
     a = ap.parse_args()
+
+    # Com AUTH_OBRIGATORIA=true, mandar GPS exige token: o simulador entra como central (acessa qualquer rota).
+    global TOKEN
+    perfis = req("GET", f"{a.api}/usuarios?role=cco")
+    if perfis:
+        TOKEN = req("POST", f"{a.api}/auth/sso", {"email": perfis[0]["email"]}).get("token", "")
 
     if a.reset:
         req("POST", f"{a.api}/rotas/{a.rota}/reset")

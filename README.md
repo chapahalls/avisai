@@ -33,7 +33,7 @@ Toda a voz roda na **Agora Conversational AI**. O áudio vai do aparelho direto 
 | **Ver sem instalar nada** | [tour em vídeo de 1 min](https://github.com/rodarglobal/rodar-web/blob/main/docs/assets/readme/tour.mp4) do site e do painel · [validação ponta a ponta com a api real: 33 de 33 etapas](https://github.com/rodarglobal/rodar-backend/blob/main/evidence/validacao.md) · [telas do app](https://github.com/rodarglobal/rodar-mobile#telas-do-aplicativo) |
 | **Repositórios** | [rodar-backend](https://github.com/rodarglobal/rodar-backend) (este) · [rodar-web](https://github.com/rodarglobal/rodar-web) · [rodar-mobile](https://github.com/rodarglobal/rodar-mobile) |
 | **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 512 testes automatizados: 299 no backend, 127 no web, 86 no mobile |
-| **Segurança** | JWT assinado no login, papel `cco` nas ações da central, CORS restrito, segredo do LLM e limite de ligações ([detalhes](https://github.com/rodarglobal/rodar-backend#segurança)) |
+| **Segurança** | JWT assinado no login e exigido em toda escrita (padrão), papel `cco` nas ações da central, motorista só na própria rota, CORS restrito, segredo do LLM e limite de ligações. O que falta para produção está [escrito aqui](#o-que-falta-para-produção) |
 | **O que é simulado** | login sem senha, GPS da rota, documentos fiscais e o modo Demo do painel: [lista completa](#simulado--pré-existente-e5e8) |
 <!-- Demo publicada e vídeo de 3 min do Hack Brasil: incluir as duas linhas aqui antes de 30/11. -->
 
@@ -46,8 +46,8 @@ O backend coordena a operação que começa na viagem atribuída e termina na de
 | Operação | rotas, geocerca, Tasks, escalonamento, estadia, ocorrências, pedidos e timeline | seed, GPS e documentos de demonstração |
 | Tempo real | SSE do CCO e WebSocket para rota/motorista | sem replay/cursor garantido; clientes precisam reconciliar por REST |
 | Voz e chamadas | controle de sessão Agora, LLM com ferramentas, contingência local, cascata Twilio → Agora RTC | PSTN/RTC reais exigem credenciais, URL pública e permissões externas |
-| Arquivos | metadados no Postgres e binários em `ARQUIVOS_DIR` | não há autenticação/autorização ou versionamento de arquivos |
-| Identidade e acesso | perfis persistidos; `/auth/sso` emite **JWT assinado** (HS256, papel e validade); com `AUTH_OBRIGATORIA=true` as ações da central exigem papel `cco`; CORS só nas origens de `CORS_ORIGENS`; segredo do LLM comparado em tempo constante; limite de ligações manuais por rota | o login continua simulado (sem senha); leitura e eventos do app do motorista seguem abertos |
+| Arquivos | metadados no Postgres e binários em `ARQUIVOS_DIR`; só a central anexa, e só a central e o motorista da rota leem e baixam | sem versionamento de arquivos |
+| Identidade e acesso | perfis persistidos; `/auth/sso` emite **JWT assinado** (HS256, papel e validade); com `AUTH_OBRIGATORIA=true` (padrão) toda escrita exige token, as ações da central exigem papel `cco` e o motorista só age na rota atribuída a ele; CORS só nas origens de `CORS_ORIGENS`; segredo do LLM comparado em tempo constante; limite de ligações manuais por rota | o login continua simulado (sem senha); as leituras (`GET`, SSE e WebSocket) seguem abertas |
 
 Os frontends devem conservar essa distinção. Não use um campo ausente da API para gerar GPS, valor de estadia, documento, evento ou sucesso de telefonia no cliente.
 
@@ -70,7 +70,7 @@ git clone https://github.com/rodarglobal/rodar-backend.git && cd rodar-backend
 ```
 
 ```bash
-cp .env.example .env   # preencha AGORA_APP_ID, AGORA_APP_CERTIFICATE e LLM_API_KEY
+cp .env.example .env   # preencha AGORA_APP_ID, AGORA_APP_CERTIFICATE, LLM_API_KEY e AUTH_SEGREDO (a api não sobe sem ele)
 ```
 
 ```bash
@@ -109,12 +109,29 @@ Para refazer: `POST /rotas/1/reset`, ou o botão "Reset da demo" na `/teste`.
 | O quê | Como | Onde |
 |---|---|---|
 | Token de acesso | `POST /auth/sso` devolve um JWT HS256 com `sub`, `email`, `role`, `driverId`, `iat` e `exp` (`AUTH_TOKEN_VALIDADE_H`, padrão 12 h), assinado com `AUTH_SEGREDO` | `infra/auth.py` |
-| Papel da central | com `AUTH_OBRIGATORIA=true`: publicar e atribuir rota, cadastrar motorista, assumir Task, responder chamado e ligar pelo CCO exigem `Authorization: Bearer <token>` com papel `cco` (401 sem token, 403 com papel errado). O token também pode ir em `?token=` | `api/deps.py` (`exigir_cco`) |
+| Login obrigatório | `AUTH_OBRIGATORIA=true` é o padrão: toda escrita exige `Authorization: Bearer <token>` (401 sem token). A api não sobe se `AUTH_SEGREDO` tiver menos de 32 caracteres. `false` só em desenvolvimento local | `infra/settings.py`, `main.py` (`checar_segredo_auth`) |
+| Papel da central | publicar e atribuir rota, cadastrar motorista, assumir Task, responder chamado, mandar mensagem ou pedido ao motorista, anexar arquivo, atender chamada e ligar pelo CCO exigem papel `cco` (403 com papel errado) | `api/deps.py` (`exigir_cco`) |
+| Dono da rota | GPS, chegada, descarga, ligação ao recebedor, reset, arquivos, sessão de voz, `/agent/*`, `/call/receiver`, outbox (`POST /events`) e token RTC: o motorista só age na rota atribuída a ele (claim `driverId`, 403 na rota de outro); a central age em qualquer rota | `api/deps.py` (`exigir_acesso_rota`, `exigir_acesso_sessao`) |
 | LLM próprio | a Agora manda `LLM_SHARED_SECRET` como Bearer; a comparação é exata e em tempo constante. Sem segredo, a api avisa no log | `api/llm.py` |
 | CORS | só as origens de `CORS_ORIGENS` (painel local e a demo publicada) | `main.py` |
 | Custo de telefonia | no máximo `LIGACOES_MANUAIS_MAX` ligações manuais por rota a cada `LIGACOES_MANUAIS_JANELA_S` (429 depois disso); as ligações automáticas do agente não entram no limite | `infra/auth.py`, `api/deps.py` |
 
-Testes em `tests/api/test_auth.py`. `GET /health` mostra `auth_obrigatoria` e `llm_protegido`.
+Testes em `tests/api/test_auth.py`. `GET /health` mostra `auth_obrigatoria` e `llm_protegido`. As páginas de teste em `static/` e os clientes de exemplo em `clients/` não mandam token: use-os com `AUTH_OBRIGATORIA=false`. `scripts/simular_rota.py` e `scripts/validar_fluxos.py` entram como central.
+
+### O que falta para produção
+
+O que está acima basta para a demo, não para operar com dados reais. Falta, em ordem de prioridade:
+
+| O quê | Onde | Como | Por quê |
+|---|---|---|---|
+| Login de verdade | `api/compat.py` (`/auth/sso`) e telas de login do app e do painel | central com o SSO da empresa (OIDC) ou senha com hash Argon2; motorista com código por SMS | hoje não há senha: quem conhece um e-mail do seed entra com aquele papel |
+| 2FA para a central | `infra/auth.py` e uma tabela de fatores; tela de código no painel | TOTP com app autenticador, obrigatório para o papel `cco`, com códigos de recuperação | a central publica rotas, dispara ligações pagas e vê dados de motoristas |
+| Leituras protegidas | `GET /rotas`, `/cco/*`, `/eventos`, `/api/*`, SSE e WebSocket | mesmo token das escritas; o motorista vê só a própria rota | transcrições, GPS e telefones ainda podem ser lidos sem login |
+| Sessão segura | `api/deps.py` (`?token=` no SSE e WebSocket) | token de 15 min com refresh rotativo e revogação; ticket de uso único no WebSocket; `expo-secure-store` no app e cookie HttpOnly no painel | token na URL vaza em logs; hoje ele vale 12 h e não dá para revogar |
+| Segredos e HTTPS | `.env`, deploy por túnel temporário | domínio próprio com HTTPS, segredos num cofre, CORS só para o domínio de produção | túnel temporário não é produção |
+| Dados pessoais (LGPD) | transcrições, GPS e telefones no banco e em `ARQUIVOS_DIR` | aviso ao motorista, prazo de retenção, registro de quem acessou, backup cifrado | voz e localização de trabalhador são dados pessoais |
+| Limites com várias instâncias | `infra/auth.py` (`LimiteChamadas`, em memória) | mover o limite de ligações para Redis | em memória, cada instância conta sozinha |
+| Rotas de demonstração | `POST /rotas/{id}/reset` | remover em produção | apaga o histórico da viagem |
 
 ## Arquitetura
 
@@ -269,7 +286,7 @@ Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi
 |---|---|---|---|
 | GET | `/health` | — | estado da configuração, túnel, Agora, Twilio e LLM |
 | GET | `/usuarios?role=driver\|cco`<br>`/api/users` | — | perfis persistidos de demonstração |
-| POST | `/auth/sso` | `{email}` | login MOCK; devolve perfil e token não autorizador |
+| POST | `/auth/sso` | `{email}` | login MOCK (sem senha); devolve perfil e JWT assinado, exigido nas escritas |
 | GET | `/token?channel=&uid=` | — | token RTC+RTM de 24 h |
 | POST | `/sessions` | `{rota_id}` | inicia o agente da viagem e devolve o token do motorista |
 | GET / DELETE / POST | `/sessions`<br>`/sessions/{id}`<br>`/sessions/{id}/speak` | — / — / `{texto, prioridade?}` | lista, encerra ou pede uma fala manual para teste |
