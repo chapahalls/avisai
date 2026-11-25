@@ -1,5 +1,7 @@
 # RODAR · backend
 
+[![CI](https://github.com/rodarglobal/rodar-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/rodarglobal/rodar-backend/actions/workflows/ci.yml)
+
 Copiloto de voz do RODAR para transportadoras, focado no **caminhão parado**:
 1. Na aproximação, o agente avisa o motorista e o CCO.
 2. Na chegada, cria a Task do CCO e conta a estadia (Lei 11.442, franquia de 5 h, R$ 2,50 por t/h).
@@ -64,6 +66,10 @@ make up                # Postgres + api (migra e roda o seed) + túnel cloudflar
 
 ```bash
 make test              # roda os testes no container (banco avisai_test)
+```
+
+```bash
+docker compose run --rm test ruff check .   # lint (o mesmo do CI)
 ```
 
 - A api fica em `http://localhost:8000`, com a doc interativa em `/docs`. `curl localhost:8000/health` mostra a URL pública do túnel (`public_url`).

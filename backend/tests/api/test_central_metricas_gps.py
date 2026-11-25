@@ -1,10 +1,9 @@
 """Fluxos 4 a 6: pedido da central, métricas/ranking e divergência entre GPS do celular e rastreador."""
-from datetime import timedelta
 
 from sqlmodel import select
 
 from app.infra.db import sessao
-from app.infra.models import EventoGeo, SolicitacaoCentral
+from app.infra.models import EventoGeo
 from tests.fakes import tool_call
 from tests.helpers import eventos
 

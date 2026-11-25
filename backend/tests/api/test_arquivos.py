@@ -3,7 +3,6 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from sqlmodel import select
 
 from app.api import cco
 from app.infra.db import sessao

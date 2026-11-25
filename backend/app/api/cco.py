@@ -66,7 +66,7 @@ async def fluxo(ct, rota_id: Optional[int] = None, intervalo_contador: float = 1
             try:
                 tipo, msg = await asyncio.wait_for(a.fila.get(), timeout=intervalo_contador)
                 yield tipo, json.loads(msg)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if motorista_id is not None:
                     # Uma atribuição nova altera a viagem atual sem exigir reconexão.
                     from ..servicos.publicacao import rota_atual

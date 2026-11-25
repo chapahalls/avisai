@@ -11,7 +11,7 @@ from .contingencia import normalizar
 
 _PALAVRAS_VAZIAS = {
     "a", "o", "as", "os", "um", "uma", "de", "da", "do", "das", "dos", "e", "em", "no", "na", "nos", "nas",
-    "com", "pra", "para", "por", "que", "ta", "esta", "tá", "foi", "ser", "sao", "eh", "e", "ja", "mais",
+    "com", "pra", "para", "por", "que", "ta", "esta", "tá", "foi", "ser", "sao", "eh", "ja", "mais",
 }
 
 # Assuntos que, ditos pelo motorista, sustentam o campo mesmo com o LLM reescrevendo a frase.
