@@ -1,21 +1,23 @@
-# AvisAI · backend
+# RODAR · backend
 
-Copiloto de voz para transportadoras, focado no **caminhão parado**:
+Copiloto de voz do RODAR para transportadoras, focado no **caminhão parado**:
 1. Na aproximação, o agente avisa o motorista e o CCO.
 2. Na chegada, cria a Task do CCO e conta a estadia (Lei 11.442, franquia de 5 h, R$ 2,50 por t/h).
 3. Insiste com o CCO e, sem resposta, **liga para o recebedor**.
 4. Registra a resposta do recebedor como prova e a repassa por voz ao motorista.
 
-Time Chapahalls (3 pessoas: Jeferson, Henry e Lucas) · hackathon UNMUTE by Agora · backend e infra: Lucas.
+Time RODAR (4 pessoas: Jeferson, Henry, Lucas e Eduardo) · backend e infra: Lucas.
 
-**Versão entregue: tag [`v1.3-entrega`](https://github.com/chapahalls/avisai/releases/tag/v1.3-entrega)** (substitui as anteriores). Se houver nova correção, ela sai numa tag nova, e a tag `v*-entrega` mais recente é a versão entregue. Licença: [MIT](LICENSE).
+> **Histórico:** o projeto começou como *AvisAI* no hackathon UNMUTE by Agora (21–22/11/2026) e continua como **RODAR** no Hack Brasil 2026, na trilha Logística & automação. Os repositórios foram criados em 22/11/2026 e todo o histórico de commits está neles; o AvisAI virou o nome do agente de voz do RODAR.
+
+Licença: [MIT](LICENSE). As tags `v1.0-entrega` a `v1.3-entrega` marcam as versões entregues no UNMUTE by Agora; a versão avaliada no Hack Brasil é o último commit de `main`.
 
 **Repositórios do projeto** (todos públicos):
 | Repo | O quê | Responsável |
 |---|---|---|
-| [chapahalls/avisai](https://github.com/chapahalls/avisai) | este backend: API, agente de voz (Agora ConvoAI), regras, infra Docker | Lucas |
-| [chapahalls/avisai-mobile](https://github.com/chapahalls/avisai-mobile) | app do motorista (React Native / Expo): voz pela Agora, mapa, sincronização com o backend | Jeferson |
-| [chapahalls/avisai-web](https://github.com/chapahalls/avisai-web) | painel do CCO (React + Vite): frota, Tasks, ligações, indicadores, publicação de rotas | Henry |
+| [rodarglobal/rodar-backend](https://github.com/rodarglobal/rodar-backend) | este backend: API, agente de voz (Agora ConvoAI), regras, infra Docker | Lucas |
+| [rodarglobal/rodar-mobile](https://github.com/rodarglobal/rodar-mobile) | app do motorista (React Native / Expo): voz pela Agora, mapa, sincronização com o backend | Jeferson |
+| [rodarglobal/rodar-web](https://github.com/rodarglobal/rodar-web) | painel do CCO (React + Vite): frota, Tasks, ligações, indicadores, publicação de rotas | Henry |
 | [chapahalls/chapahalls-ideas](https://github.com/chapahalls/chapahalls-ideas) | pesquisa, decisões de produto e plano de arquitetura | time |
 
 Toda a voz roda na **Agora Conversational AI**. O áudio vai do aparelho direto para a nuvem da Agora; este backend é o plano de controle: tokens, `/join`, `/leave`, `/speak` e `/call`, o LLM próprio com ferramentas e as regras de negócio.
@@ -49,7 +51,7 @@ Os frontends devem conservar essa distinção. Não use um campo ausente da API 
 ## Como rodar (clone limpo, só Docker)
 
 ```bash
-git clone https://github.com/chapahalls/avisai.git && cd avisai
+git clone https://github.com/rodarglobal/rodar-backend.git && cd rodar-backend
 ```
 
 ```bash
