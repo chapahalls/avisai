@@ -5,7 +5,7 @@ Rotas do `agent-server` do doc em cima dos serviços deste backend:
   POST /events (outbox idempotente) · GET /events (DomainEvent)
   GET /api/route · /api/receivers · /api/documents · /api/metrics · POST /auth/sso
 """
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -174,7 +174,10 @@ def get_events(tripId: Optional[str] = None, since: Optional[str] = Query(None, 
     if tripId:
         q = q.where(Evento.rota_id == _rota_id(tripId))
     if since:
-        q = q.where(Evento.timestamp > datetime.fromisoformat(since.rstrip("Z")))
+        desde = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        if desde.tzinfo is None:
+            desde = desde.replace(tzinfo=UTC)
+        q = q.where(Evento.timestamp > desde)
     with sessao() as s:
         return [para_dominio(e) for e in s.exec(q).all()]
 
