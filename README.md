@@ -357,6 +357,16 @@ Se a transcrição vier ruim, troque só o ASR no `.env`. Ferramentas e fala pro
 
 Depois de editar o `.env`, rode `docker compose up -d --force-recreate api` e abra uma sessão nova. O ARES e o Deepgram nova-2 foram aceitos pela Agora (`/join` 200); a qualidade se compara falando, de preferência com fone de ouvido.
 
+### Avaliar a conversa do agente
+`make avaliar` roda conversas difíceis (início com respostas soltas, ruído e conversa ao lado, ocorrência com desvio, resposta curta à central, pedidos vagos) contra a api e o LLM de verdade, sem Agora, e mostra turno a turno o que o agente respondeu e o que registrou, com checagens OK/FALHOU (`scripts/avaliar_conversas.py`). Reinicia a rota usada (padrão: rota 1; `ARGS="--rota 2 --cenario ruido"`).
+
+Sem LLM (ou com a chave recusada), quem responde é a contingência: ela entende as falas mais comuns, lembra o que o agente acabou de perguntar (o "sim"/"não" vale para isso), confirma respostas curtas antes de mandar à central e, quando não entende, volta para a pendência em aberto. Com LLM, o estado vivo traz a **SITUAÇÃO** da viagem e o **PRÓXIMO PASSO**, sem as falas repetidas.
+
+Travas contra o LLM se perder (valem para qualquer modelo):
+- relatório inicial e check-in só gravam campos que saíram das últimas falas do motorista (`dominio/fundamentacao.py`); o resto volta como pergunta;
+- ocorrência chamada de `outro` é reclassificada pelas palavras ("furou o pneu" → avaria), e o que a descrição já respondeu não é perguntado de novo;
+- detalhes que chegam depois de a ocorrência fechar vão para a mais recente, e campos que a fala respondeu e o LLM esqueceu são somados.
+
 ### LLM sem custo (opcional)
 Qualquer API compatível com OpenAI e com suporte a ferramentas serve. Duas opções com plano gratuito:
 - **Groq** (muito rápido, bom para voz): `LLM_BASE_URL=https://api.groq.com/openai/v1`, `LLM_MODEL=llama-3.3-70b-versatile`, `LLM_API_KEY=` gerada em console.groq.com.

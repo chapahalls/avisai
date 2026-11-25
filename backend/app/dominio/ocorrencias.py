@@ -53,6 +53,20 @@ ROTULO = {
 }
 
 
+# O que a própria descrição da ocorrência já responde ("furou o pneu" é o "o que aconteceu").
+RESPONDIDO_PELA_DESCRICAO = {"avaria": "o_que", "outro": "detalhe"}
+
+
+def detalhes_iniciais(tipo: str, descricao: str) -> dict:
+    campo = RESPONDIDO_PELA_DESCRICAO.get(tipo)
+    return {campo: descricao.strip()} if campo and (descricao or "").strip() else {}
+
+
+def campos_a_perguntar(tipo: str, descricao: str) -> list[str]:
+    ja = detalhes_iniciais(tipo, descricao)
+    return [c for c in campos(tipo) if c not in ja]
+
+
 def campos(tipo: str) -> list[str]:
     return [c for c, _ in PERGUNTAS.get(tipo, PERGUNTAS["outro"])]
 
@@ -75,6 +89,37 @@ def extrair(campo: str, fala: str) -> str:
         if re.search(r"\b(sim|tem|da|consigo|positivo|isso|ferid|machuc)\b", t):
             return "sim"
     return fala.strip()
+
+
+# Campos que dá para reconhecer mesmo quando não foram a pergunta da vez
+# ("a carga tá inteira, consigo seguir" responde carga e consegue_seguir de uma vez).
+_DETECTA = {
+    "consegue_seguir": r"\b(consigo|da pra|posso|vou|pode) seguir\b|\bseguir viagem\b|\b(nao (consigo|da|posso) (pra )?seguir)\b"
+                       r"|\bpreciso de (socorro|guincho|mecanico)\b",
+    "carga": r"\bcarga (ta |esta |ficou |tá )?(inteira|ok|boa|intacta|de boa|perfeita|avariad\w*|molhad\w*|danificad\w*|caiu|tombou|amassad\w*)",
+    "feridos": r"\b(ninguem|nenhum|ninguém) (se )?(ferid\w*|machuc\w*)|\b(tem|ha) (gente |alguem )?(ferid\w*|machucad\w*)",
+    "local": r"\b(br|sp|mg|pr|rj)[- ]?\d{2,3}\b|\b(km|quilometro) \d+",
+}
+
+
+def detectar(faltantes: list[str], fala: str) -> dict:
+    """Só os campos que a fala responde claramente (sem chutar o primeiro)."""
+    t = normalizar(fala or "")
+    return {c: (extrair(c, fala) if c in SIM_NAO else fala.strip())
+            for c in faltantes if _DETECTA.get(c) and re.search(_DETECTA[c], t)}
+
+
+def extrair_varios(faltantes: list[str], fala: str) -> dict:
+    """A resposta vale para o 1º campo que falta e para qualquer outro que a fala responda claramente."""
+    if not faltantes:
+        return {}
+    t = normalizar(fala)
+    achados = {faltantes[0]: extrair(faltantes[0], fala)}
+    for campo in faltantes[1:]:
+        padrao = _DETECTA.get(campo)
+        if padrao and re.search(padrao, t):
+            achados[campo] = extrair(campo, fala) if campo in SIM_NAO else fala.strip()
+    return achados
 
 
 def grave(tipo: str, detalhes: dict) -> bool:

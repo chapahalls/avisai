@@ -199,3 +199,94 @@ async def test_sem_llm_a_contingencia_responde_a_nf(client, container):
     r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("qual o número da nota fiscal?"), headers=AUTH)
     partes, _ = sse(r.text)
     assert "000.482.913" in "".join(partes)
+
+
+def test_ultima_fala_do_agente_vem_do_historico():
+    from app.servicos.conversa import ultima_fala_agente
+
+    msgs = [
+        {"role": "system", "content": "p"},
+        {"role": "assistant", "content": "E aí!"},
+        {"role": "user", "content": "oi"},
+        {"role": "assistant", "content": "Confirma a retirada da carga?"},
+        {"role": "user", "content": "sim"},
+    ]
+    assert ultima_fala_agente(msgs) == "Confirma a retirada da carga?"
+
+
+async def test_estado_tem_situacao_e_proximo_passo_sem_ruido_de_falas(client, fake_llm):
+    sid = await _sessao(client)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("oi"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("tudo certo"), headers=AUTH)
+    estado = next(m["content"] for m in fake_llm.recebidas[-1]["mensagens"] if m["content"].startswith("ESTADO ATUAL"))
+    assert "SITUAÇÃO:" in estado and "PRÓXIMO PASSO" in estado
+    assert "Fala do motorista" not in estado and "oi" not in estado.split("Últimos eventos:")[-1]
+
+
+async def test_relatorio_inventado_pelo_llm_nao_e_gravado(client, fake_llm):
+    from app.infra.models import Reporte
+
+    sid = await _sessao(client)
+    fake_llm.respostas = [
+        tool_call("registrar_relatorio_inicial", '{"estado_caminhao":"pronto","carga":"28 paletes de bebidas"}'),
+        "Como tá o caminhão?",
+    ]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("peguei a carga já, bora"), headers=AUTH)
+    with sessao() as s:
+        assert s.exec(select(Reporte)).all() == []
+    resultado = json.loads(fake_llm.recebidas[-1]["mensagens"][-1]["content"])
+    assert resultado["ok"] is False and "pergunte_agora" in resultado
+
+
+async def test_avaria_nao_pergunta_de_novo_o_que_a_descricao_ja_disse(client, fake_llm):
+    sid = await _sessao(client)
+    fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"avaria","descricao":"furou o pneu"}'), "Registrei."]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("furou o pneu aqui"), headers=AUTH)
+    with sessao() as s:
+        oc = s.exec(select(Ocorrencia)).one()
+    assert oc.detalhes == {"o_que": "furou o pneu"} and oc.faltantes[0] == "consegue_seguir"
+
+
+async def test_pneu_furado_chamado_de_outro_vira_avaria(client, fake_llm):
+    sid = await _sessao(client)
+    fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"outro","descricao":"Furou o pneu."}'), "Registrei."]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("furou o pneu aqui"), headers=AUTH)
+    with sessao() as s:
+        oc = s.exec(select(Ocorrencia)).one()
+    assert oc.tipo == "avaria" and not oc.completa
+
+
+async def test_detalhe_depois_de_fechar_vai_para_a_ultima_ocorrencia(client, fake_llm):
+    sid = await _sessao(client)
+    fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"outro","descricao":"barulho estranho"}'), "Ok."]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("tá fazendo um barulho estranho"), headers=AUTH)
+    fake_llm.respostas = [tool_call("detalhar_ocorrencia", '{"consegue_seguir":"sim"}'), "Anotado."]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("mas dá pra seguir"), headers=AUTH)
+    with sessao() as s:
+        oc = s.exec(select(Ocorrencia)).one()
+    assert oc.detalhes.get("consegue_seguir") == "sim"
+
+
+async def test_relatorio_vale_o_que_ele_disse_no_turno_anterior(client, fake_llm):
+    from app.infra.models import Reporte
+
+    sid = await _sessao(client)
+    fake_llm.respostas = ["E a carga?"]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("o caminhão tá de boa"), headers=AUTH)
+    fake_llm.respostas = [
+        tool_call("registrar_relatorio_inicial", '{"estado_caminhao":"de boa","carga":"paletes de bebida"}'), "Fechado."]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("são os paletes de bebida"), headers=AUTH)
+    with sessao() as s:
+        r = s.exec(select(Reporte)).one()
+    assert r.campos == {"estado_caminhao": "de boa", "carga": "paletes de bebida"} and r.completo
+
+
+async def test_detalhe_pega_tudo_o_que_a_fala_respondeu(client, fake_llm):
+    sid = await _sessao(client)
+    fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"avaria","descricao":"furou o pneu"}'), "Registrei."]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("furou o pneu"), headers=AUTH)
+    fake_llm.respostas = [tool_call("detalhar_ocorrencia", '{"consegue_seguir":"sim"}'), "Anotado."]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("a carga tá inteira, consigo seguir sim"), headers=AUTH)
+    with sessao() as s:
+        oc = s.exec(select(Ocorrencia)).one()
+    assert oc.completa and oc.detalhes["consegue_seguir"] == "sim" and "inteira" in oc.detalhes["carga"]

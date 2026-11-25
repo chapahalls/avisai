@@ -241,8 +241,10 @@ def registrar_ocorrencia(
             antiga.completa = True
             s.add(antiga)
         o = Ocorrencia(rota_id=rota_id, tipo=tipo, descricao=descricao, km=km, rodovia=rodovia,
-                       lat=r.ultima_lat, lng=r.ultima_lng,
-                       transcricao=transcricao, timestamp=c.relogio.agora(), faltantes=roteiro.campos(tipo))
+                       lat=r.ultima_lat, lng=r.ultima_lng, transcricao=transcricao, timestamp=c.relogio.agora(),
+                       detalhes=roteiro.detalhes_iniciais(tipo, descricao),
+                       faltantes=roteiro.campos_a_perguntar(tipo, descricao))
+        o.completa = not o.faltantes
         s.add(o)
         s.commit()
         s.refresh(o)
@@ -264,9 +266,16 @@ def detalhar_ocorrencia(c, rota_id: int, campos: dict, transcricao: Optional[str
     from ..dominio import ocorrencias as roteiro
 
     aberta = ocorrencia_aberta(rota_id)
+    complemento = aberta is None
     if not aberta:
-        return {"ok": False, "mensagem": "Não há ocorrência aberta para detalhar."}
-    validos = {k: str(v).strip() for k, v in (campos or {}).items() if k in roteiro.campos(aberta.tipo) and str(v).strip()}
+        # Fechou (ou o tipo não pedia perguntas), mas o motorista ainda está contando: soma à mais recente.
+        with sessao() as s:
+            aberta = s.exec(select(Ocorrencia).where(Ocorrencia.rota_id == rota_id)
+                            .order_by(Ocorrencia.id.desc())).first()
+        if not aberta:
+            return {"ok": False, "mensagem": "Não há ocorrência para detalhar. Se for um problema novo, use registrar_ocorrencia."}
+    aceitos = set(roteiro.campos(aberta.tipo)) | (set(roteiro.ROTULO) if complemento else set())
+    validos = {k: str(v).strip() for k, v in (campos or {}).items() if k in aceitos and str(v).strip()}
     with sessao() as s:
         o = s.get(Ocorrencia, aberta.id)
         era_grave = roteiro.grave(o.tipo, o.detalhes or {})

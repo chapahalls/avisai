@@ -194,7 +194,7 @@ _MSG_CCO = re.compile(
     r"\b(?:avis\w*|fal\w*|diz\w*|manda\w*|mand\w*(?: uma)? (?:mensagem|recado)|deixa\w*(?: um)? recado)"
     r" (?:pro|pra|para o|ao|o)? ?(?:cco|central|operador|operacao)\b[,:]?\s*(?:(?:dizendo|falando|avisando)\s+)?(?:que\s+)?(.+)"
 )
-_REPETIR = r"\b(repet\w*|o que (voce|vc|tu) (disse|falou)|nao (entendi|ouvi)|o que eu perdi|teve (algum |alguma )?(aviso|novidade))\b"
+_REPETIR = r"\b(repet\w*|o que (voce|vc|tu) (disse|falou)|nao (entendi|ouvi)|como e que e)\b"
 
 
 def mensagem_cco(fala: str) -> Optional[str]:
@@ -206,6 +206,17 @@ def mensagem_cco(fala: str) -> Optional[str]:
     inicio = m.start(1)  # normalizar preserva o comprimento: recorta a fala original
     texto = (fala or "")[inicio:].strip(" ,.:;")
     return texto or None
+
+
+_RECADO_VAZIO = re.compile(
+    r"^\s*(?:(?:me )?(?:avis\w*|fal\w*|diz\w*|manda\w*|mand\w*(?: uma)? (?:mensagem|recado)|deixa\w*(?: um)? recado))"
+    r" (?:pro|pra|para o|ao|o)? ?(?:cco|central|operador|operacao)\s*[.!]?\s*$"
+)
+
+
+def pede_recado_vazio(fala: str) -> bool:
+    """'manda pro CCO' sem dizer o quê: o agente pergunta o recado."""
+    return bool(_RECADO_VAZIO.search(normalizar(fala or "")))
 
 
 def pede_repetir(fala: str) -> bool:

@@ -171,3 +171,20 @@ async def test_llm_recebe_a_ferramenta_de_recado(client, fake_llm):
     await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("oi"), headers=AUTH)
     nomes = {f["function"]["name"] for f in fake_llm.recebidas[-1]["ferramentas"]}
     assert {"comandar_app", "enviar_mensagem_cco"} <= nomes
+
+
+async def test_reset_funciona_com_ocorrencia_que_abriu_chamado(client, container):
+    from sqlmodel import select
+
+    from app.infra.db import sessao
+    from app.infra.models import ChamadoCCO, Ocorrencia
+
+    container.settings.llm_api_key = ""
+    sid = await _sessao(client)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("furou o pneu"), headers=AUTH)
+    with sessao() as s:
+        assert s.exec(select(ChamadoCCO)).all() and s.exec(select(Ocorrencia)).all()
+    r = await client.post("/rotas/1/reset")
+    assert r.status_code == 200
+    with sessao() as s:
+        assert s.exec(select(ChamadoCCO)).all() == [] and s.exec(select(Ocorrencia)).all() == []

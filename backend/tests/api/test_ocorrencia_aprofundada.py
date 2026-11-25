@@ -109,7 +109,8 @@ async def test_outro_problema_no_meio_abre_nova_ocorrencia(client, container):
     sid = await _sessao(client)
     await _falar(client, sid, "Vou atrasar, trânsito parado")
     r = await _falar(client, sid, "Agora furou um pneu")
-    assert "aconteceu com o caminhão" in r
+    # "furou um pneu" já responde o que aconteceu: a próxima pergunta é se dá pra seguir.
+    assert "Dá pra seguir" in r
     with sessao() as s:
         ocs = s.exec(select(Ocorrencia).order_by(Ocorrencia.id)).all()
     assert [o.tipo for o in ocs] == ["atraso", "avaria"]

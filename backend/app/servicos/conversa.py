@@ -14,6 +14,8 @@ from . import alertas, central, consultas, ferramentas, mensagens, reportes
 
 log = logging.getLogger("avisai.conversa")
 MAX_PASSADAS = 4
+RUIDO_ESTADO = (str(TipoEvento.FALA_MOTORISTA), str(TipoEvento.FALA_AGENTE), str(TipoEvento.FALA_RECEBEDOR),
+                "alerta_motorista", "evento_app")
 
 
 def limpar(msgs: list[dict]) -> list[dict]:
@@ -41,7 +43,9 @@ def estado(c, rota_id: int) -> str:
     r = consultas.rota(rota_id)
     e = consultas.ultima_estadia(rota_id)
     with sessao() as s:
-        evs = s.exec(select(Evento).where(Evento.rota_id == rota_id).order_by(Evento.id.desc()).limit(6)).all()
+        # Falas e alertas já estão na conversa; repetir aqui só confunde o modelo.
+        evs = s.exec(select(Evento).where(Evento.rota_id == rota_id, Evento.tipo.not_in(RUIDO_ESTADO))
+                     .order_by(Evento.id.desc()).limit(6)).all()
     return prompts.estado_atual(
         r.status, r.distancia_m, r.eta_min, consultas.resumo_estadia(c, e) if e else None,
         consultas.ultima_task(rota_id), consultas.ultima_ligacao(rota_id), [ev.mensagem for ev in reversed(evs)],
@@ -142,9 +146,23 @@ def estado_contingencia(c, sa: SessaoAgente) -> contingencia.Estado:
     )
 
 
-def heuristica(c, sa: SessaoAgente, fala: str) -> tuple[Optional[str], dict, str]:
+def ultima_fala_agente(msgs: list[dict]) -> Optional[str]:
+    """O que o agente disse logo antes da última fala do motorista (contexto do "sim"/"não")."""
+    viu_usuario = False
+    for m in reversed(msgs or []):
+        if m.get("role") == "user":
+            viu_usuario = True
+        elif m.get("role") == "assistant" and viu_usuario and isinstance(m.get("content"), str) and m["content"].strip():
+            return m["content"].strip()
+    return None
+
+
+def heuristica(c, sa: SessaoAgente, fala: str, msgs: Optional[list[dict]] = None) -> tuple[Optional[str], dict, str]:
     """Contingência sem LLM: diálogo por intenção com o estado da rota (dominio/contingencia.py)."""
-    d = contingencia.decidir(sa.papel, fala, estado_contingencia(c, sa))
+    from dataclasses import replace
+
+    estado_c = replace(estado_contingencia(c, sa), ultima_fala_agente=ultima_fala_agente(msgs or []))
+    d = contingencia.decidir(sa.papel, fala, estado_c)
     return d.ferramenta, d.args, d.texto
 
 
@@ -176,7 +194,7 @@ async def responder(c, sa: SessaoAgente, msgs_in: list[dict]) -> AsyncIterator[s
     dito: list[str] = []
 
     async def contingencia():
-        nome, args, texto = heuristica(c, sa, fala)
+        nome, args, texto = heuristica(c, sa, fala, msgs_in)
         if nome:
             res = await _executar(c, sa, nome, args, fala)
             if not texto and isinstance(res, dict):

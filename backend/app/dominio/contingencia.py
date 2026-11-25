@@ -31,6 +31,7 @@ class Estado:
     checkin_faltantes: Optional[list] = None
     pergunta_central: Optional[str] = None
     ultimos_avisos: Optional[list] = None
+    ultima_fala_agente: Optional[str] = None  # o que o agente acabou de dizer (contexto do "sim"/"não")
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,15 @@ OCORRENCIAS = [  # (tipo, padrões, rótulo falado) — a ordem importa
     ("acidente", (r"acident", r"batida", r"bateram"), "acidente"),
     ("atraso", (r"atras",), "atraso"),
 ]
+
+def classificar_ocorrencia(texto: str) -> Optional[str]:
+    """Tipo da ocorrência pelas palavras ("furou o pneu" → avaria). None se não reconhecer."""
+    t = normalizar(texto or "")
+    for tipo, padroes, _ in OCORRENCIAS:
+        if _tem(t, *padroes):
+            return tipo
+    return None
+
 
 ROTULOS = {"estado_caminhao": "como tá o caminhão", "carga": "qual a carga que você pegou",
            "status_carga": "como tá a carga", "tempo_viagem": "quanto tempo de viagem", "problemas": "se teve algum problema"}
@@ -146,8 +156,31 @@ def _motorista(fala: str, t: str, e: Estado) -> Decisao:
         if cmd.acao == "sair_da_conta" and not cmd.confirmado:
             return Decisao(comandos_app.PEDIR_CONFIRMACAO_SAIR)
         return Decisao(comandos_app.fala_confirmacao(cmd, e.status_rota), "comandar_app", cmd.args())
+    pendente = _central_a_confirmar(e.ultima_fala_agente) if e.pergunta_central else None
+    if pendente is not None:
+        if _tem(t, *SIM):
+            # "sim, tá lacrada" diz mais que o "certo" de antes: manda a fala completa.
+            resto = re.sub(SIM[0], "", t).strip(" ,.!")
+            resposta = fala.strip() if len(re.findall(r"\w+", resto)) >= 2 else pendente
+            return Decisao("Fechado, passei pra central.", "responder_central", {"resposta": resposta})
+        if _tem(t, *NAO):
+            return Decisao("Beleza. Qual é a resposta pra central, então?")
+    if _tem(t, r"\b(o que|oque) (voce|vc|tu) (faz|pode fazer|sabe fazer|consegue)\b", r"\bcomo (voce|vc) (funciona|me ajuda)\b",
+            r"^\s*(me )?ajuda\b"):
+        return Decisao("Eu cuido da sua entrega por voz: registro chegada, ocorrência e descarga, conto a estadia, "
+                       "falo com o CCO e abro as telas pra você. É só falar.")
+    if _tem(t, r"\b(o que eu perdi|teve (algum |alguma )?(aviso|novidade)|alguma novidade)\b"):
+        return Decisao(comandos_app.falar_avisos((e.ultimos_avisos or [])[-2:]))
     if comandos_app.pede_repetir(fala):
-        return Decisao(comandos_app.falar_avisos(e.ultimos_avisos or []))
+        if e.ultima_fala_agente:
+            return Decisao(e.ultima_fala_agente)
+        return Decisao(comandos_app.falar_avisos((e.ultimos_avisos or [])[-2:]))
+    if (e.ultima_fala_agente or "") == PERGUNTA_RECADO and not pergunta and not any(_tem(t, *p) for _, p, _ in OCORRENCIAS):
+        texto_recado = fala.strip(" .")
+        return Decisao(f"Mandei pro CCO: {texto_recado}. Te aviso quando responderem.", "enviar_mensagem_cco",
+                       {"texto": texto_recado})
+    if comandos_app.pede_recado_vazio(fala):
+        return Decisao(PERGUNTA_RECADO)
     recado = comandos_app.mensagem_cco(fala)
     if recado and not any(_tem(normalizar(recado), *p) for _, p, _ in OCORRENCIAS):
         return Decisao(f"Mandei pro CCO: {recado}. Te aviso quando responderem.", "enviar_mensagem_cco", {"texto": recado})
@@ -156,10 +189,13 @@ def _motorista(fala: str, t: str, e: Estado) -> Decisao:
         t,
         r"\b(inici|comec|sair|partir)\w*(?:\s+a)?\s+(?:viagem|rota)\b",
         r"\bquero\s+(?:viajar|sair)\b",
-    ):
+    ) or (e.status_rota in ("planejada", "na_origem") and _tem(
+        t, r"\bpeguei a carga\b", r"\bcarreguei\b", r"\b(ja )?(to|tou|estou|ta|esta) carregad", r"\bcarga (ta |esta )?(no caminhao|carregada)\b",
+        r"\b(partiu|bora|vamo(s)? nessa|pe na estrada)\b",
+    )):
         if e.status_rota in ("planejada", "na_origem"):
             return Decisao(
-                "Certo, vou registrar a retirada e iniciar a viagem.",
+                "Retirada registrada, viagem iniciada. Me conta: como tá o caminhão e qual a carga que você pegou?",
                 "confirmar_retirada",
                 {"observacao": fala},
             )
@@ -182,6 +218,9 @@ def _motorista(fala: str, t: str, e: Estado) -> Decisao:
         return Decisao("Chegada registrada, CCO avisado e estadia contando. Me conta: como tá a carga, "
                        "quanto tempo de viagem e se teve algum problema?", "confirmar_chegada")
     if e.pergunta_central and not pergunta and not any(_tem(t, *p) for _, p, _ in OCORRENCIAS):
+        if _curta_demais(fala):
+            # "Certo.", "ok": pode ser ruído ou conversa ao lado. Confirma antes de mandar.
+            return Decisao(f"{CONFIRMA_CENTRAL}“{fala.strip(' .!')}”? Diga sim pra eu mandar.")
         return Decisao("Fechado, passei pra central.", "responder_central", {"resposta": fala})
     if e.checkin_faltantes and not pergunta:
         achados = {k: v for k, v in _campos_checkin(fala, t).items() if k in e.checkin_faltantes}
@@ -204,21 +243,21 @@ def _motorista(fala: str, t: str, e: Estado) -> Decisao:
     if e.ocorrencia_faltantes and not pergunta and not outro_problema:
         from . import ocorrencias as roteiro
 
-        campo = e.ocorrencia_faltantes[0]
-        valor = roteiro.extrair(campo, fala)
-        restantes = e.ocorrencia_faltantes[1:]
+        achados = roteiro.extrair_varios(e.ocorrencia_faltantes, fala)
+        restantes = [c for c in e.ocorrencia_faltantes if c not in achados]
         prox = roteiro.proxima(e.ocorrencia_tipo, restantes)
         alerta = ""
-        if roteiro.grave(e.ocorrencia_tipo, {campo: valor}):
+        if roteiro.grave(e.ocorrencia_tipo, achados):
             alerta = ("Se ainda não ligaram, liga agora pro SAMU no 192 ou pros bombeiros no 193. "
                       "Já alertei o CCO como urgente. ")
         texto = alerta + (f"Anotado. {prox}" if prox else "Anotado, passei tudo pro CCO. Qualquer novidade, me fala.")
-        return Decisao(texto, "detalhar_ocorrencia", {campo: valor})
+        return Decisao(texto, "detalhar_ocorrencia", achados)
     for tipo, padroes, rotulo in OCORRENCIAS:
         if _tem(t, *padroes):
             from . import ocorrencias as roteiro
 
-            return Decisao(f"Registrei a ocorrência de {rotulo} e o CCO já tá vendo. {roteiro.proxima(tipo, roteiro.campos(tipo))}",
+            prox = roteiro.proxima(tipo, roteiro.campos_a_perguntar(tipo, fala)) or "Qualquer novidade, me fala."
+            return Decisao(f"Registrei a ocorrência de {rotulo} e o CCO já tá vendo. {prox}",
                            "registrar_ocorrencia", {"tipo": tipo, "descricao": fala})
     if _tem(t, r"\boi\b", r"\bola\b", r"bom dia", r"boa tarde", r"boa noite", r"\be ai\b", r"tudo bem"):
         situacao = (f"Você tá parado há {e.tempo_parado} em {e.destino}." if e.tempo_parado
@@ -226,8 +265,51 @@ def _motorista(fala: str, t: str, e: Estado) -> Decisao:
         return Decisao(f"E aí, {e.nome}! {situacao} Qualquer coisa, me fala.")
     if pergunta:
         return Decisao(_status(e))
-    return Decisao("Não peguei direito. Posso registrar a sua chegada, uma ocorrência como fila ou doca ocupada, "
-                   "a descarga, ou te dizer o tempo parado e a estadia.")
+    return Decisao(_nao_entendi(e))
+
+
+SIM = (r"^\s*(sim|isso|pode|confirm\w*|manda|ok|beleza|certo|positivo|exato|fechado)\b",)
+NAO = (r"^\s*(nao|negativo|errado|espera|calma)\b",)
+CONFIRMA_CENTRAL = "Respondo pra central: "
+PERGUNTA_RECADO = "O que eu mando pro CCO?"
+
+
+def _curta_demais(fala: str) -> bool:
+    palavras = re.findall(r"\w+", fala or "")
+    return len(palavras) <= 2 and not re.search(r"\d", fala or "")
+
+
+def _central_a_confirmar(ultima_fala_agente: Optional[str]) -> Optional[str]:
+    """Se o agente acabou de pedir confirmação da resposta à central, devolve o texto a mandar."""
+    m = re.search(re.escape(CONFIRMA_CENTRAL) + r"“(.+?)”\?", ultima_fala_agente or "")
+    return m.group(1) if m else None
+
+
+def _pendencia_falada(e: "Estado") -> Optional[str]:
+    from . import ocorrencias as roteiro
+
+    if e.pergunta_central:
+        return f"A central perguntou: {e.pergunta_central}"
+    if e.retirada_pendente:
+        return "Confirma a retirada da carga?"
+    if e.chegada_pendente:
+        return "Você chegou? Confirma a chegada?"
+    if e.ocorrencia_tipo and e.ocorrencia_faltantes:
+        return roteiro.proxima(e.ocorrencia_tipo, e.ocorrencia_faltantes)
+    for faltantes in (e.checkin_faltantes, e.inicial_faltantes):
+        if faltantes:
+            return "Me conta: " + " e ".join(ROTULOS[k] for k in faltantes) + "?"
+    return None
+
+
+def _nao_entendi(e: "Estado") -> str:
+    """Não entendeu: volta para o que está pendente; sem pendência, pede para repetir (sem listar tudo)."""
+    pend = _pendencia_falada(e)
+    if pend:
+        return f"Não peguei. {pend}"
+    if (e.ultima_fala_agente or "").startswith(("Não peguei", "Ainda não entendi")):
+        return "Ainda não entendi. Fala com outras palavras?"
+    return "Não peguei. Pode repetir de outro jeito? Por exemplo: cheguei, tem fila, ou quanto tempo tô parado."
 
 
 def _recorte(fala: str, t: str, padrao: str) -> Optional[str]:  # noqa: F811
