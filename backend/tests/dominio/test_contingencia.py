@@ -167,7 +167,7 @@ def test_problema_na_portaria_e_ocorrencia_nao_chegada():
 
 
 # ---------- contexto da conversa: não se perder ----------
-from dataclasses import replace as _replace
+from dataclasses import replace as _replace  # noqa: E402
 
 
 def test_resposta_curta_a_central_pede_confirmacao_e_o_sim_manda():

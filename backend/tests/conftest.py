@@ -34,6 +34,14 @@ def _limpar_banco():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _limpar_limites():
+    from app.infra.auth import limite_chamadas
+
+    limite_chamadas.limpar()
+    yield
+
+
 @pytest.fixture
 def settings() -> Settings:
     return Settings(

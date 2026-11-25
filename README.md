@@ -1,5 +1,7 @@
 # RODAR · backend
 
+[![CI](https://github.com/rodarglobal/rodar-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/rodarglobal/rodar-backend/actions/workflows/ci.yml)
+
 Copiloto de voz do RODAR para transportadoras, focado no **caminhão parado**:
 1. Na aproximação, o agente avisa o motorista e o CCO.
 2. Na chegada, cria a Task do CCO e conta a estadia (Lei 11.442, franquia de 5 h, R$ 2,50 por t/h).
@@ -22,6 +24,19 @@ Licença: [MIT](LICENSE). As tags `v1.0-entrega` a `v1.3-entrega` marcam as vers
 
 Toda a voz roda na **Agora Conversational AI**. O áudio vai do aparelho direto para a nuvem da Agora; este backend é o plano de controle: tokens, `/join`, `/leave`, `/speak` e `/call`, o LLM próprio com ferramentas e as regras de negócio.
 
+## Para o júri
+
+| | |
+|---|---|
+| **Trilha** | Logística & automação |
+| **Em uma frase** | Um agente de voz que avisa o recebedor antes da chegada, conta a estadia do caminhão parado (Lei 11.442) e só chama a central quando alguém precisa decidir. |
+| **Ver sem instalar nada** | [tour em vídeo de 1 min](https://github.com/rodarglobal/rodar-web/blob/main/docs/assets/readme/tour.mp4) do site e do painel · [validação ponta a ponta com a api real: 33 de 33 etapas](https://github.com/rodarglobal/rodar-backend/blob/main/evidence/validacao.md) · [telas do app](https://github.com/rodarglobal/rodar-mobile#telas-do-aplicativo) |
+| **Repositórios** | [rodar-backend](https://github.com/rodarglobal/rodar-backend) (este) · [rodar-web](https://github.com/rodarglobal/rodar-web) · [rodar-mobile](https://github.com/rodarglobal/rodar-mobile) |
+| **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 512 testes automatizados: 299 no backend, 127 no web, 86 no mobile |
+| **Segurança** | JWT assinado no login, papel `cco` nas ações da central, CORS restrito, segredo do LLM e limite de ligações ([detalhes](https://github.com/rodarglobal/rodar-backend#segurança)) |
+| **O que é simulado** | login sem senha, GPS da rota, documentos fiscais e o modo Demo do painel: [lista completa](#simulado--pré-existente-e5e8) |
+<!-- Demo publicada e vídeo de 3 min do Hack Brasil: incluir as duas linhas aqui antes de 30/11. -->
+
 ## Propósito, fronteiras e estado atual
 
 O backend coordena a operação que começa na viagem atribuída e termina na descarga: recebe posições, detecta aproximação/chegada, cria Tasks, calcula estadia, registra chamadas, persiste mensagens/chamados e entrega atualizações aos dois frontends. Ele é adequado para demonstrar esse fluxo com dados fictícios e contratos integráveis, mas não deve ser tratado como uma plataforma pronta para operação real.
@@ -32,7 +47,7 @@ O backend coordena a operação que começa na viagem atribuída e termina na de
 | Tempo real | SSE do CCO e WebSocket para rota/motorista | sem replay/cursor garantido; clientes precisam reconciliar por REST |
 | Voz e chamadas | controle de sessão Agora, LLM com ferramentas, contingência local, cascata Twilio → Agora RTC | PSTN/RTC reais exigem credenciais, URL pública e permissões externas |
 | Arquivos | metadados no Postgres e binários em `ARQUIVOS_DIR` | não há autenticação/autorização ou versionamento de arquivos |
-| Identidade | perfis persistidos e token SSO MOCK | token não protege endpoints; CORS está amplo para a demonstração |
+| Identidade e acesso | perfis persistidos; `/auth/sso` emite **JWT assinado** (HS256, papel e validade); com `AUTH_OBRIGATORIA=true` as ações da central exigem papel `cco`; CORS só nas origens de `CORS_ORIGENS`; segredo do LLM comparado em tempo constante; limite de ligações manuais por rota | o login continua simulado (sem senha); leitura e eventos do app do motorista seguem abertos |
 
 Os frontends devem conservar essa distinção. Não use um campo ausente da API para gerar GPS, valor de estadia, documento, evento ou sucesso de telefonia no cliente.
 
@@ -66,6 +81,10 @@ make up                # Postgres + api (migra e roda o seed) + túnel cloudflar
 make test              # roda os testes no container (banco avisai_test)
 ```
 
+```bash
+docker compose run --rm test ruff check .   # lint (o mesmo do CI)
+```
+
 - A api fica em `http://localhost:8000`, com a doc interativa em `/docs`. `curl localhost:8000/health` mostra a URL pública do túnel (`public_url`).
 - O túnel é obrigatório: a nuvem da Agora precisa chamar o nosso `/v1/chat/completions`. A URL do quick tunnel é descoberta sozinha, e você pode fixá-la em `PUBLIC_URL` se preferir.
 - **Se o túnel reiniciar, a URL muda.** Abra uma nova sessão depois disso.
@@ -84,6 +103,18 @@ make test              # roda os testes no container (banco avisai_test)
 Para refazer: `POST /rotas/1/reset`, ou o botão "Reset da demo" na `/teste`.
 
 ---
+
+## Segurança
+
+| O quê | Como | Onde |
+|---|---|---|
+| Token de acesso | `POST /auth/sso` devolve um JWT HS256 com `sub`, `email`, `role`, `driverId`, `iat` e `exp` (`AUTH_TOKEN_VALIDADE_H`, padrão 12 h), assinado com `AUTH_SEGREDO` | `infra/auth.py` |
+| Papel da central | com `AUTH_OBRIGATORIA=true`: publicar e atribuir rota, cadastrar motorista, assumir Task, responder chamado e ligar pelo CCO exigem `Authorization: Bearer <token>` com papel `cco` (401 sem token, 403 com papel errado). O token também pode ir em `?token=` | `api/deps.py` (`exigir_cco`) |
+| LLM próprio | a Agora manda `LLM_SHARED_SECRET` como Bearer; a comparação é exata e em tempo constante. Sem segredo, a api avisa no log | `api/llm.py` |
+| CORS | só as origens de `CORS_ORIGENS` (painel local e a demo publicada) | `main.py` |
+| Custo de telefonia | no máximo `LIGACOES_MANUAIS_MAX` ligações manuais por rota a cada `LIGACOES_MANUAIS_JANELA_S` (429 depois disso); as ligações automáticas do agente não entram no limite | `infra/auth.py`, `api/deps.py` |
+
+Testes em `tests/api/test_auth.py`. `GET /health` mostra `auth_obrigatoria` e `llm_protegido`.
 
 ## Arquitetura
 
@@ -126,7 +157,7 @@ Os fronts podem seguir o contrato do doc sem mudança. A api também responde na
 | `GET /api/documents` | NF-e e CT-e da rota; a consulta por voz também lista os nomes disponíveis |
 | `GET /cco/chamados?abertos=true` | chamados do motorista aguardando resposta do CCO |
 | `POST /cco/chamados/{id}/responder` | resposta do CCO; o agente fala a resposta ao motorista |
-| `POST /auth/sso` | SSO mock (token fake; papel `cco` se o e-mail tiver "cco") |
+| `POST /auth/sso` | login simulado (sem senha) que devolve um JWT assinado com o papel (`cco` ou `driver`) |
 
 Os `type` do contrato saem dos nossos eventos: `retirada`→`PickupConfirmed`, `relatorio`→`ReportSubmitted`, `campo_faltante`→`ReportFieldMissing`, `ocorrencia`→`OccurrenceCreated`, `aproximacao`→`ApproachDetected`, `aviso_recebedor`→`ReceiverNotified`, `resposta_recebedor`/`ligacao_nao_atendida`→`ReceiverCallResult` (`payload.answered`), `chegada`→`ArrivalRegistered`, `task_criada`→`TaskCreated`, `notificacao_cco`/`escalada_recebedor`→`TaskEscalated`, `task_confirmada`→`TaskAcknowledged`, `descarga`→`UnloadConfirmed`.
 
@@ -412,7 +443,7 @@ Fonte: docs da Agora, via o MCP `mcp.agora.io` e o OpenAPI v2.
 
 ## Simulado / pré-existente (E5/E8)
 - **Rastreador do caminhão simulado:** o simulador manda um segundo GPS (`fonte=rastreador`) com ruído de cerca de 10 m, que serve de dupla prova. Integração real com Sascar, Omnilink etc. fica fora.
-- **Documentos, SSO e métricas:** `/api/documents` devolve NF-e e CT-e fictícios; `/auth/sso` devolve token fake; a latência em `/api/metrics` mede só o nosso LLM até o primeiro trecho (não inclui ASR, TTS e rede).
+- **Documentos, SSO e métricas:** `/api/documents` devolve NF-e e CT-e fictícios; `/auth/sso` não pede senha (o token é real, o login é simulado); a latência em `/api/metrics` mede só o nosso LLM até o primeiro trecho (não inclui ASR, TTS e rede).
 - **GPS simulado:** `scripts/simular_rota.py` move o caminhão por um trajeto reto de Jundiaí a Campinas, chamando `POST /rotas/{id}/posicao`. Em produção, a posição viria do GPS do celular do motorista pelo mesmo endpoint.
 - **Ligação ao recebedor (plano B):** na demo, o recebedor atende por uma página web (`/recebedor`) num canal Agora RTC, não por telefone. A ligação telefônica real (plano A, `POST /call`) está implementada e testada com mock, mas desligada: o time não tem número importado na Agora.
 - **Seed fictício:** a transportadora, o motorista, a placa, a NF, o recebedor e os telefones são inventados (`backend/app/seed.py`).

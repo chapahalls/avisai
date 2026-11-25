@@ -1,0 +1,12 @@
+target-version = "py312"
+line-length = 130
+extend-exclude = ["alembic/versions"]
+
+[lint]
+select = ["E", "F", "W", "B", "UP"]
+# E741: nomes curtos (l, e) são o padrão do código; B008: Depends() em default é o padrão do FastAPI.
+ignore = ["E501", "E741", "B008", "UP007", "UP006", "UP035"]
+
+[lint.per-file-ignores]
+# Os routers convertem exceções de domínio em HTTPException de propósito (deps.erro_http).
+"app/api/*" = ["B904"]

@@ -1,5 +1,4 @@
 """Chamados motorista→CCO: chegada, resposta e persistência."""
-from sqlmodel import select
 
 from app.infra.db import sessao
 from app.infra.models import ChamadoCCO

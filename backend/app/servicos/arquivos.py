@@ -2,7 +2,7 @@
 import re
 import unicodedata
 import uuid
-from datetime import timezone
+from datetime import UTC
 from pathlib import Path
 from typing import Optional
 
@@ -26,7 +26,7 @@ def metadados(item: ArquivoRota) -> dict:
     return {
         "id": item.id, "rota_id": item.rota_id, "nome_original": item.nome_original,
         "tipo_mime": item.tipo_mime, "tamanho_bytes": item.tamanho_bytes, "categoria": item.categoria,
-        "descricao": item.descricao, "criado_em": item.criado_em.replace(tzinfo=timezone.utc),
+        "descricao": item.descricao, "criado_em": item.criado_em.replace(tzinfo=UTC),
         "url_download": f"/rotas/{item.rota_id}/arquivos/{item.id}/download",
     }
 

@@ -3,7 +3,7 @@ import asyncio
 import logging
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Any, Optional
 
 from .eventos import Eventos
@@ -14,7 +14,7 @@ log = logging.getLogger("avisai.container")
 
 class RelogioSistema:
     def agora(self) -> datetime:
-        return datetime.now(timezone.utc).replace(tzinfo=None)
+        return datetime.now(UTC).replace(tzinfo=None)
 
 
 @dataclass

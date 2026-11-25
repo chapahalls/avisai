@@ -27,9 +27,26 @@ SEGREDO = os.getenv("LLM_SHARED_SECRET", "")
 RESULTADOS: list[tuple[str, bool, str]] = []
 
 
-def req(metodo: str, caminho: str, corpo=None, headers=None):
+_TOKEN_CCO: str | None = None
+
+
+def _token_cco() -> str:
+    """Faz login como CCO uma vez: com AUTH_OBRIGATORIA=true, as ações da central exigem esse token."""
+    global _TOKEN_CCO
+    if _TOKEN_CCO is None:
+        _TOKEN_CCO = ""
+        _, perfis = req("GET", "/usuarios?role=cco", autenticar=False)
+        if isinstance(perfis, list) and perfis:
+            _, sso = req("POST", "/auth/sso", {"email": perfis[0]["email"]}, autenticar=False)
+            _TOKEN_CCO = sso.get("token", "") if isinstance(sso, dict) else ""
+    return _TOKEN_CCO
+
+
+def req(metodo: str, caminho: str, corpo=None, headers=None, autenticar=True):
     dados = json.dumps(corpo).encode() if corpo is not None else None
     h = {"Content-Type": "application/json", **(headers or {})}
+    if autenticar and "Authorization" not in h and _token_cco():
+        h["Authorization"] = f"Bearer {_token_cco()}"
     r = urllib.request.Request(API + caminho, data=dados, method=metodo, headers=h)
     try:
         with urllib.request.urlopen(r, timeout=60) as resp:

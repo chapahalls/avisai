@@ -12,7 +12,7 @@ from ..infra.db import sessao
 from ..infra.eventos import dumps, envelope
 from ..infra.models import ChamadoCCO, Estadia, Evento, LigacaoRecebedor, Ocorrencia, Rota, TaskCCO
 from ..servicos import chamadas_agente, chamados, consultas, tasks
-from .deps import c, erro_http
+from .deps import c, erro_http, exigir_cco, limitar_ligacao
 from .rotas import rota_publica
 from .schemas import Confirmar, EventoStream, LigarAgente, ResponderChamado
 
@@ -66,7 +66,7 @@ async def fluxo(ct, rota_id: Optional[int] = None, intervalo_contador: float = 1
             try:
                 tipo, msg = await asyncio.wait_for(a.fila.get(), timeout=intervalo_contador)
                 yield tipo, json.loads(msg)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if motorista_id is not None:
                     # Uma atribuição nova altera a viagem atual sem exigir reconexão.
                     from ..servicos.publicacao import rota_atual
@@ -90,7 +90,7 @@ def listar_chamados(rota_id: Optional[int] = None, abertos: bool = False):
     return [x.model_dump() for x in chamados.listar(rota_id, apenas_abertos=abertos)]
 
 
-@router.post("/cco/chamados/{chamado_id}/responder")
+@router.post("/cco/chamados/{chamado_id}/responder", dependencies=[Depends(exigir_cco)])
 async def responder_chamado(chamado_id: int, body: ResponderChamado, ct=Depends(c)):
     try:
         return (await chamados.responder(ct, chamado_id, body.resposta, body.respondido_por)).model_dump()
@@ -103,9 +103,10 @@ def listar_chamadas_agente(rota_id: Optional[int] = None, abertas: bool = False)
     return [x.model_dump() for x in chamadas_agente.listar(rota_id, apenas_abertas=abertas)]
 
 
-@router.post("/cco/rotas/{rota_id}/ligar")
+@router.post("/cco/rotas/{rota_id}/ligar", dependencies=[Depends(exigir_cco)])
 async def ligar_agente(rota_id: int, body: LigarAgente, ct=Depends(c)):
     """Atalho explícito do CCO; a mesma cascata é disponível à ferramenta do LLM."""
+    limitar_ligacao(ct, rota_id)
     try:
         return (await chamadas_agente.ligar(ct, rota_id, body.destino, body.motivo, iniciado_por="cco")).model_dump()
     except Exception as e:  # noqa: BLE001
@@ -144,7 +145,7 @@ def listar_tasks():
         return s.exec(select(TaskCCO).order_by(TaskCCO.id.desc()).limit(50)).all()
 
 
-@router.post("/tasks/{task_id}/confirmar")
+@router.post("/tasks/{task_id}/confirmar", dependencies=[Depends(exigir_cco)])
 async def confirmar(task_id: int, body: Confirmar = Confirmar(), ct=Depends(c)):
     """CCO assume a Task: para o escalonamento."""
     try:

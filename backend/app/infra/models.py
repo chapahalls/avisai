@@ -1,5 +1,5 @@
 """Modelo de dados (contexto-produto.md, seção 4), sem audio_url e sem saúde do motorista."""
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Optional
 
 from sqlalchemy import JSON, CheckConstraint, Column
@@ -8,7 +8,7 @@ from sqlmodel import Field, SQLModel
 
 def agora() -> datetime:
     """UTC sem tzinfo (o relógio injetável dos serviços usa o mesmo formato)."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Empresa(SQLModel, table=True):

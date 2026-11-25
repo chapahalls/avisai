@@ -105,7 +105,7 @@ async def test_recebedor_responde_doca_e_motorista_ouve(client, fake_llm, fake_a
         tool_call("registrar_resposta_recebedor", '{"previsao":"em 40 minutos","doca":"4","resumo":"A doca 4 libera em 40 minutos."}'),
         "Então a doca 4 libera em 40 minutos, certo? Obrigada!",
     ]
-    r = await client.post(f"/v1/chat/completions", json=corpo("A doca 4 libera em 40 minutos"),
+    r = await client.post("/v1/chat/completions", json=corpo("A doca 4 libera em 40 minutos"),
                           headers={**AUTH, "X-Avisai-Sessao": str(sid_rec)})
     assert r.status_code == 200
     lig = obter(LigacaoRecebedor, lig.id)

@@ -1,5 +1,8 @@
-from fastapi import HTTPException
+from typing import Optional
 
+from fastapi import Depends, HTTPException, Request
+
+from ..infra import auth
 from ..infra import container as ct
 from ..integracoes.agora_rest import AgoraErro
 from ..integracoes.tokens import CredencialAgoraInvalida
@@ -25,3 +28,41 @@ def erro_http(e: Exception) -> HTTPException:
     if isinstance(e, RuntimeError):
         return HTTPException(503, str(e))
     return HTTPException(500, str(e))
+
+
+def _token_da_requisicao(request: Request) -> str:
+    cabecalho = request.headers.get("authorization", "")
+    if cabecalho.lower().startswith("bearer "):
+        return cabecalho[7:].strip()
+    # EventSource e WebSocket não mandam cabeçalho: aceitam ?token=
+    return request.query_params.get("token", "")
+
+
+def usuario_atual(request: Request, ct: ct.Container = Depends(c)) -> Optional[dict]:
+    """Claims do token, ou None quando não há token. Token inválido é sempre 401."""
+    token = _token_da_requisicao(request)
+    if not token:
+        return None
+    try:
+        return auth.validar(ct.settings, token)
+    except auth.TokenInvalido:
+        raise HTTPException(401, "token inválido ou expirado", headers={"WWW-Authenticate": "Bearer"})
+
+
+def exigir_cco(request: Request, ct: ct.Container = Depends(c)) -> Optional[dict]:
+    """Ações da central. Com AUTH_OBRIGATORIA=false (padrão da demo local), só valida o token se vier."""
+    usuario = usuario_atual(request, ct)
+    if not ct.settings.auth_obrigatoria:
+        return usuario
+    if usuario is None:
+        raise HTTPException(401, "faça login como CCO (/auth/sso)", headers={"WWW-Authenticate": "Bearer"})
+    if usuario.get("role") != "cco":
+        raise HTTPException(403, "ação exclusiva da central (papel cco)")
+    return usuario
+
+
+def limitar_ligacao(ct: ct.Container, rota_id: int) -> None:
+    s = ct.settings
+    if not auth.limite_chamadas.permitir(f"rota:{rota_id}", s.ligacoes_manuais_max, s.ligacoes_manuais_janela_s):
+        raise HTTPException(429, f"limite de {s.ligacoes_manuais_max} ligações manuais por rota a cada "
+                                 f"{int(s.ligacoes_manuais_janela_s // 60)} min")
