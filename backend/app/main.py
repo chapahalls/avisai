@@ -1,4 +1,4 @@
-"""API do AvisAI."""
+"""API do RODAR."""
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     ct.cancelar_tarefas()
 
 
-app = FastAPI(title="AvisAI API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="RODAR API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.add_middleware(UploadLimitMiddleware)
 app.include_router(arquivos.router)
