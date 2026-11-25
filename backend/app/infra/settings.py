@@ -35,7 +35,9 @@ class Settings(BaseSettings):
         "recebedor", "CCO", "central", "nota fiscal", "NF-e", "CT-e", "DANFE", "palete", "paletes", "toneladas",
         "lacre", "canhoto", "avaria", "retirada", "check-in", "ocorrência", "fila", "placa", "frete",
     ]
-    tts_voice_id: str = "Portuguese_Deep-VoicedGentleman"
+    # Voz neutra e clara de copiloto. A "Deep-VoicedGentleman" é grave e soprada (de narração
+    # íntima) e soava sedutora. Lista: platform.minimax.io/docs/faq/system-voice-id
+    tts_voice_id: str = "Portuguese_ReliableMan"
     tts_voice_id_recebedor: str = "Portuguese_Wiselady"
     filler_words: list[str] = FILLER_PADRAO
     filler_espera_ms: int = 1500
