@@ -167,6 +167,7 @@ Os fronts podem seguir o contrato do doc sem mudança. A api também responde na
 | `GET /token?channel&uid` | token RTC+RTM |
 | `POST /call/receiver` `{tripId, reason}` | liga para o recebedor (plano B ou plano A) |
 | `POST /events` | **outbox idempotente**: `DomainEvent` com `idempotencyKey` (200 na primeira vez, 409 se repetido). Aplica `ArrivalRegistered`, `PickupConfirmed`, `OccurrenceCreated`, `UnloadConfirmed` e `ReportSubmitted` |
+| `POST /rotas/{id}/falas-offline` | **fala gravada sem sinal** (multipart: `audio` WAV/M4A, `idempotencyKey`, `faladoEm`, `duracaoMs`). 201 na primeira vez, 409 se repetida. Em segundo plano: transcreve (`STT_MODEL`, mesma chave do LLM), passa ao agente do motorista com o horário em que foi falada e manda a resposta como `aviso_motorista`. Uma fala por vez por rota, na ordem de chegada. Evento `fala_offline` com `status` (`recebida`, `transcrita`, `processada`, `sem_transcricao`, `erro_transcricao`, `vazia`) |
 | `GET /events?tripId&since` | linha do tempo no formato `DomainEvent {id, idempotencyKey, tripId, type, occurredAt, receivedAt, source, payload}`; serve para o polling de 2 s |
 | `GET /api/route?tripId` | rota do dia: polyline, origem, destino, recebedor, placa, NF, canal e uids |
 | `GET /api/receivers` | ranking de recebedores: espera média, ligações atendidas, estadia devida, avisados antes da chegada |

@@ -23,6 +23,7 @@ class Container:
     agora: Any  # portas.AgoraGateway
     llm: Any  # portas.LLM
     twilio: Any = None  # integrações.twilio.TwilioGateway; opcional para testes sem PSTN
+    transcritor: Any = None  # portas.Transcritor; sem ele a fala offline fica guardada sem texto
     relogio: Any = field(default_factory=RelogioSistema)  # portas.Relogio
     eventos: Eventos = field(default_factory=Eventos)
     tarefas: dict = field(default_factory=dict)
@@ -49,9 +50,11 @@ _atual: Optional[Container] = None
 def padrao() -> Container:
     from ..integracoes.agora_rest import AgoraRest
     from ..integracoes.openai_llm import OpenAILLM
+    from ..integracoes.openai_stt import OpenAITranscritor
 
     s = Settings()
-    return Container(settings=s, agora=AgoraRest(s), llm=OpenAILLM(s))
+    return Container(settings=s, agora=AgoraRest(s), llm=OpenAILLM(s),
+                     transcritor=OpenAITranscritor(s) if s.llm_api_key else None)
 
 
 def atual() -> Container:

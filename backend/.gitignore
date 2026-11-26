@@ -1,2 +1,4 @@
 data/arquivos/*
 !data/arquivos/.gitkeep
+data/falas_offline/*
+!data/falas_offline/.gitkeep

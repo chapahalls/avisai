@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     # Arquivos da viagem: conteúdo persistente, separado dos documentos fiscais fictícios.
     arquivos_dir: str = "data/arquivos"
     arquivos_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0, le=100 * 1024 * 1024)
+    # Falas gravadas sem sinal (offline-first): o app guarda o áudio e manda quando a rede volta.
+    falas_offline_dir: str = "data/falas_offline"
+    falas_offline_max_bytes: int = Field(default=5 * 1024 * 1024, gt=0, le=50 * 1024 * 1024)
+    stt_model: str = "gpt-4o-mini-transcribe"  # transcrição na API do LLM (mesma chave e URL)
+    fuso_utc_horas: int = -3  # horário falado ao motorista (Brasília, sem horário de verão)
 
     # Ritmo da demo
     cco_intervalo_s: float = 20

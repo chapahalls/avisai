@@ -73,6 +73,21 @@ class FakeLLM:
             yield {"texto": parte + " "}
 
 
+@dataclass
+class FakeTranscritor:
+    """Transcrição roteirizada; grava os áudios recebidos."""
+
+    texto: str = "Tem fila no km 120 da BR-116"
+    recebidos: list = field(default_factory=list)
+    falhar: bool = False
+
+    async def transcrever(self, audio: bytes, nome: str, tipo_mime: str) -> str:
+        self.recebidos.append({"bytes": len(audio), "nome": nome, "tipo_mime": tipo_mime})
+        if self.falhar:
+            raise RuntimeError("STT fora do ar")
+        return self.texto
+
+
 def tool_call(nome: str, args: str, cid: str = "call_1") -> dict:
     return {
         "role": "assistant",

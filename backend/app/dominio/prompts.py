@@ -34,6 +34,19 @@ def situacao(status_rota: str) -> tuple[str, str]:
     return SITUACOES.get(status_rota, (f"Status da rota: {status_rota}.", "Ajudar no que ele pedir."))
 
 
+def fala_offline(hora: str, atraso_min: int) -> str:
+    """Contexto extra quando a fala foi gravada sem sinal e só chegou agora."""
+    atraso = "agora há pouco" if atraso_min < 2 else f"há {atraso_min} minutos"
+    return (
+        f"FALA GRAVADA SEM SINAL: o motorista disse isto às {hora} e só chegou agora ({atraso}). "
+        "Ele não está te ouvindo neste momento. Faça SÓ o que a fala pede com todas as letras (ocorrência, recado ao CCO, "
+        "retirada, chegada, relatório). NÃO resolva pendências da rota que a fala não pediu: \"a carga tá inteira\" "
+        "não é retirada; \"cheguei\" é chegada. Responda em UMA frase curta dizendo o que registrou ou encaminhou. "
+        "Não faça perguntas; se faltar informação, registre o que der e diga o que ficou faltando. "
+        "Não use comandar_app: o app não está na frente dele. Se a fala não pedir nada, responda só \"Anotado.\""
+    )
+
+
 def motorista(r: Any, nome_motorista: str, empresa: str) -> tuple[str, str]:
     primeiro = nome_motorista.split()[0]
     prompt = f"""Você é o AvisAI, copiloto de voz da transportadora. Fala como um colega de estrada experiente: direto, calmo, parceiro, em português do Brasil. O motorista é o {primeiro}; use o nome só de vez em quando, não em toda frase.

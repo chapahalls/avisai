@@ -81,6 +81,7 @@ class TipoEvento(StrEnum):
     OCORRENCIA = "ocorrencia"
     DESCARGA = "descarga"
     FALA_MOTORISTA = "fala_motorista"
+    FALA_OFFLINE = "fala_offline"  # áudio gravado sem sinal; transcrito e processado quando chega
     FALA_RECEBEDOR = "fala_recebedor"
     FALA_AGENTE = "fala_agente"
     RETIRADA_DETECTADA = "retirada_detectada"
