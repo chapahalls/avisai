@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Avalia o agente do motorista em conversas difíceis, contra a api e o LLM de verdade.
 
-Cada cenário reinicia a rota, abre uma sessão de teste (sem Agora: só o endpoint que a Agora
-chama, /v1/chat/completions, com o histórico acumulado como a Agora manda) e mostra, turno a
-turno, o que o agente respondeu e o que ele registrou no sistema (eventos e ações no app).
+Cada cenário reinicia a rota, abre uma sessão de teste e chama o mesmo gateway OpenAI-compatível
+(/v1/chat/completions) usado pelo worker LiveKit, mostrando turno a turno o que foi respondido
+e registrado no sistema (eventos e ações no app).
 Algumas checagens automáticas marcam OK/FALHOU; o resto é para ler.
 
 Uso (dentro do Docker):  make avaliar           (ou ARGS="--cenario ruido" para um só)
@@ -89,7 +89,7 @@ def req(metodo: str, caminho: str, corpo=None, headers=None):
 
 def abrir_sessao(rota: int) -> int:
     with sessao() as s:
-        sa = SessaoAgente(rota_id=rota, papel="motorista", canal="avaliacao", agent_uid=9001, user_uid=1001,
+        sa = SessaoAgente(rota_id=rota, papel="motorista", canal="avaliacao",
                           status="encerrada", llm_mode="custom", criada_em=agora(),
                           erro="avaliação de conversa (scripts/avaliar_conversas.py)")
         s.add(sa)

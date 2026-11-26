@@ -10,7 +10,7 @@ from ..dominio.enums import StatusRota, StatusTask, TipoEvento, TipoGeo
 from ..infra.db import sessao
 from ..infra.models import Estadia, EventoGeo, Ocorrencia, RegraEscalonamento, Rota, TaskCCO
 from . import chamados, consultas, ligacoes
-from .sessoes import VozAgora
+from .sessoes import VozLiveKit
 
 log = logging.getLogger("avisai.tasks")
 
@@ -78,11 +78,11 @@ async def on_chegada(c, rota_id: int, origem: str = "gps", transcricao: Optional
     reportes.iniciar(c, rota_id, "checkin")  # o agente vai pedir o check-in (só o que faltar)
     await chamados.abrir_chegada(c, rota_id, t.id)
     if origem == "gps":  # dupla prova: o GPS detectou; a voz confirma
-        await VozAgora(c).falar_motorista(
+        await VozLiveKit(c).falar_motorista(
             rota_id, f"Parece que você chegou em {r.destino_nome}. Confirma a chegada? Já avisei o CCO e o contador "
                      "de estadia começou: são cinco horas de franquia.")
     elif origem != "voz":  # por voz, o próprio agente já responde ao motorista
-        await VozAgora(c).falar_motorista(
+        await VozLiveKit(c).falar_motorista(
             rota_id, "Chegada registrada. Avisei o CCO e o contador de estadia começou: são cinco horas de franquia. "
                      "Se tiver fila ou problema na doca, me fala.")
     c.em_segundo_plano(f"escalonamento-{t.id}", loop_escalonamento(c, t.id))
@@ -163,7 +163,7 @@ async def loop_escalonamento(c, task_id: int) -> None:
     c.eventos.registrar(TipoEvento.ESCALADA_RECEBEDOR,
                         f"CCO não respondeu em {max_t} tentativas. Agente vai ligar para o recebimento.", rota_id, task_id=task_id)
     _publicar_task(c, t)
-    await VozAgora(c).falar_motorista(rota_id, f"O CCO não respondeu em {max_t} tentativas. Tô ligando pro recebimento agora.")
+    await VozLiveKit(c).falar_motorista(rota_id, f"O CCO não respondeu em {max_t} tentativas. Tô ligando pro recebimento agora.")
     try:
         await ligacoes.ligar(c, rota_id, motivo="cco_sem_resposta", task_id=task_id)
     except Exception as e:  # noqa: BLE001  (já registrado como ligacao_falhou)
@@ -182,7 +182,7 @@ async def confirmar(c, task_id: int, por: str = "CCO") -> TaskCCO:
             s.refresh(t)
     c.eventos.registrar(TipoEvento.TASK_CONFIRMADA, f"{por} assumiu a Task da rota {t.rota_id}.", t.rota_id, task_id=task_id)
     _publicar_task(c, t)
-    await VozAgora(c).falar_motorista(t.rota_id, "O CCO assumiu o seu caso e vai tratar com o recebedor.")
+    await VozLiveKit(c).falar_motorista(t.rota_id, "O CCO assumiu o seu caso e vai tratar com o recebedor.")
     return t
 
 

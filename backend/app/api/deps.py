@@ -6,8 +6,7 @@ from ..infra import auth
 from ..infra import container as ct
 from ..infra.db import sessao
 from ..infra.models import Rota, SessaoAgente
-from ..integracoes.agora_rest import AgoraErro
-from ..integracoes.tokens import CredencialAgoraInvalida
+from ..integracoes.livekit import LiveKitErro
 from ..servicos.consultas import NaoEncontrado
 from ..servicos.usuarios import ConflitoUsuario
 
@@ -19,10 +18,8 @@ def c() -> ct.Container:
 def erro_http(e: Exception) -> HTTPException:
     if isinstance(e, NaoEncontrado):
         return HTTPException(404, str(e))
-    if isinstance(e, AgoraErro):
-        return HTTPException(502, {"erro": "agora", "status": e.status, "corpo": e.corpo})
-    if isinstance(e, CredencialAgoraInvalida):
-        return HTTPException(500, str(e))
+    if isinstance(e, LiveKitErro):
+        return HTTPException(502, {"erro": "livekit", "status": e.status, "corpo": e.corpo})
     if isinstance(e, ConflitoUsuario):
         return HTTPException(409, str(e))
     if isinstance(e, ValueError):

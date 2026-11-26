@@ -37,9 +37,9 @@ async def lifespan(app: FastAPI):
     checar_segredo_auth(s)
     if not s.auth_obrigatoria:
         log.warning("AUTH_OBRIGATORIA=false: escrita sem login liberada (só para desenvolvimento)")
-    if not s.agora_configurada():
-        log.warning("AGORA_APP_ID/AGORA_APP_CERTIFICATE ausentes")
-    if s.llm_mode == "custom" and not s.llm_shared_secret:
+    if not s.livekit_configurada():
+        log.warning("LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET ausentes")
+    if not s.llm_shared_secret:
         log.warning("LLM_SHARED_SECRET vazio: qualquer um com a URL pública pode chamar /v1/chat/completions")
     yield
     ct.cancelar_tarefas()
@@ -69,10 +69,9 @@ def health():
 
     return {
         "ok": True,
-        "agora_configurada": s.agora_configurada(),
+        "livekit_configurada": s.livekit_configurada(),
         "twilio_configurado": s.twilio_configurada(),
-        "auth_agora": "basic" if s.agora_customer_id else "token",
-        "llm_mode": s.llm_mode,
+        "llm_mode": "custom",
         "llm_upstream": bool(s.llm_api_key),
         "public_url": url_publica(s),
         "recebedor_modo": s.recebedor_modo,

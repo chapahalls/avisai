@@ -20,7 +20,7 @@ class RelogioSistema:
 @dataclass
 class Container:
     settings: Settings
-    agora: Any  # portas.AgoraGateway
+    livekit: Any  # portas.LiveKitGateway
     llm: Any  # portas.LLM
     twilio: Any = None  # integrações.twilio.TwilioGateway; opcional para testes sem PSTN
     transcritor: Any = None  # portas.Transcritor; sem ele a fala offline fica guardada sem texto
@@ -48,12 +48,12 @@ _atual: Optional[Container] = None
 
 
 def padrao() -> Container:
-    from ..integracoes.agora_rest import AgoraRest
+    from ..integracoes.livekit import LiveKitGateway
     from ..integracoes.openai_llm import OpenAILLM
     from ..integracoes.openai_stt import OpenAITranscritor
 
     s = Settings()
-    return Container(settings=s, agora=AgoraRest(s), llm=OpenAILLM(s),
+    return Container(settings=s, livekit=LiveKitGateway(s), llm=OpenAILLM(s),
                      transcritor=OpenAITranscritor(s) if s.llm_api_key else None)
 
 

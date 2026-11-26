@@ -1,55 +1,58 @@
-"""Fakes das portas (portas.py) para testes de serviço e de API."""
+"""Fakes das portas de voz, LLM e relógio para testes de serviço e de API."""
 import itertools
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Optional
 
-from app.integracoes.agora_rest import AgoraErro
+from app.integracoes.livekit import LiveKitErro
 
 
 @dataclass
-class FakeAgora:
-    """Grava as chamadas e devolve agent_ids previsíveis."""
-
-    joins: list = field(default_factory=list)
-    leaves: list = field(default_factory=list)
+class FakeLiveKit:
+    dispatches: list = field(default_factory=list)
+    removals: list = field(default_factory=list)
     speaks: list = field(default_factory=list)
-    calls: list = field(default_factory=list)
-    hangups: list = field(default_factory=list)
-    falhar_join: Optional[AgoraErro] = None
-    falhar_call: Optional[AgoraErro] = None
-    estado_call: dict = field(default_factory=lambda: {"state": "answered"})
+    dial_requests: list = field(default_factory=list)
+    falhar_dispatch: Optional[Exception] = None
+    falhar_dial: Optional[Exception] = None
+    sip_status: str = "active"
+    participantes: set = field(default_factory=set)
+    dispatch_id_by_identity: dict = field(default_factory=dict)
     _seq: Any = field(default_factory=lambda: itertools.count(1))
 
-    async def join(self, corpo: dict) -> str:
-        if self.falhar_join:
-            raise self.falhar_join
-        self.joins.append(corpo)
-        return f"agent-{next(self._seq)}"
+    async def dispatch(self, room: str, metadata: dict) -> str:
+        if self.falhar_dispatch:
+            raise self.falhar_dispatch
+        dispatch_id = f"dispatch-{next(self._seq)}"
+        self.dispatches.append({"id": dispatch_id, "room": room, "metadata": metadata})
+        self.participantes.add((room, metadata["agent_identity"]))
+        self.dispatch_id_by_identity[metadata["agent_identity"]] = dispatch_id
+        return dispatch_id
 
-    async def leave(self, agent_id: str, canal: str, agent_uid: int) -> None:
-        self.leaves.append(agent_id)
+    async def remove(self, room: str, identity: str) -> None:
+        self.removals.append((room, identity))
+        self.participantes.discard((room, identity))
 
-    async def speak(self, agent_id: str, texto: str, prioridade: str, canal: str, agent_uid: int) -> None:
-        self.speaks.append({"agent_id": agent_id, "texto": texto, "prioridade": prioridade})
+    async def send_control(self, room: str, identity: str, message: dict) -> None:
+        self.speaks.append({"agent_id": self.dispatch_id_by_identity.get(identity), "identity": identity,
+                            "texto": message["text"],
+                            "prioridade": message.get("priority", "APPEND")})
 
-    async def call(self, corpo: dict) -> str:
-        if self.falhar_call:
-            raise self.falhar_call
-        self.calls.append(corpo)
-        return f"call-{next(self._seq)}"
+    async def dial(self, room: str, number: str, identity: str, *, wait: bool = False) -> str:
+        if self.falhar_dial:
+            raise self.falhar_dial
+        self.dial_requests.append({"room": room, "number": number, "identity": identity})
+        self.participantes.add((room, identity))
+        return identity
 
-    async def call_status(self, agent_id: str, canal: str, agent_uid: int) -> dict:
-        return self.estado_call
+    async def participant_present(self, room: str, identity: str) -> bool:
+        return (room, identity) in self.participantes
 
-    async def hangup(self, agent_id: str, canal: str, agent_uid: int) -> None:
-        self.hangups.append(agent_id)
-
-    def ultimo_join(self) -> dict:
-        return self.joins[-1]
+    async def sip_call_status(self, room: str, identity: str) -> Optional[str]:
+        return self.sip_status if (room, identity) in self.participantes else None
 
     def falas(self) -> list[str]:
-        return [s["texto"] for s in self.speaks]
+        return [item["texto"] for item in self.speaks]
 
 
 @dataclass
@@ -61,7 +64,6 @@ class FakeLLM:
     falhar: bool = False
 
     async def stream(self, mensagens: list[dict], ferramentas: list[dict]):
-        """Cada resposta roteirizada: str (texto em pedaços) ou dict de tool_call()."""
         self.recebidas.append({"mensagens": [dict(m) for m in mensagens], "ferramentas": ferramentas})
         if self.falhar:
             raise RuntimeError("LLM fora do ar")

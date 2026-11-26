@@ -60,7 +60,7 @@ async def test_contingencia_aprofunda_acidente_uma_pergunta_por_vez(client, cont
     assert "feridos: não" in ev.mensagem and "BR-116" in ev.mensagem
 
 
-async def test_acidente_com_ferido_orienta_192_e_alerta_o_cco(client, container, fake_agora):
+async def test_acidente_com_ferido_orienta_192_e_alerta_o_cco(client, container, fake_livekit):
     container.settings.llm_api_key = ""
     sid = await _sessao(client)
     await _falar(client, sid, "Bateram aqui do lado, um acidente feio")
@@ -98,9 +98,9 @@ async def test_llm_recebe_a_proxima_pergunta_e_detalha(client, fake_llm):
     assert "seguir" in sistema  # a próxima pergunta vai como pendência
 
 
-async def test_prompt_pede_para_se_aprofundar(client, fake_agora):
+async def test_prompt_pede_para_se_aprofundar(client, fake_livekit):
     await _sessao(client)
-    prompt = fake_agora.ultimo_join()["properties"]["llm"]["system_messages"][0]["content"]
+    prompt = fake_livekit.dispatches[-1]["metadata"]["instructions"]
     assert "uma pergunta por vez" in prompt.lower() and "192" in prompt
 
 

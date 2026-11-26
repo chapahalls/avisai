@@ -18,7 +18,6 @@ from ..dominio.enums import TipoEvento
 from ..infra.db import sessao
 from ..infra.eventos import serial
 from ..infra.models import Evento, SessaoAgente
-from ..integracoes import tokens
 from ..servicos import chamados, consultas, ligacoes, metricas, publicacao, reportes, sessoes, tasks, usuarios
 from ..infra import auth
 from .deps import c, erro_http, exigir_login, limitar_ligacao, verificar_acesso_rota, verificar_acesso_sessao
@@ -53,8 +52,8 @@ TIPO_DOMINIO = {
     "mensagem_motorista_respondida": "DriverMessageAnswered",
     "motorista_offline": "DriverOffline",
     "chamada_twilio_falhou": "TwilioCallFailed",
-    "chamada_agora_iniciada": "AgoraFallbackStarted",
-    "chamada_agora_atendida": "AgoraFallbackAnswered",
+    "chamada_livekit_iniciada": "LiveKitFallbackStarted",
+    "chamada_livekit_atendida": "LiveKitFallbackAnswered",
     "chamada_sem_resposta": "AgentCallNoAnswer",
     "escalada_supervisor": "SupervisorEscalated",
     "arquivo_adicionado": "TripFileAdded",
@@ -129,8 +128,9 @@ async def agent_start(body: AgentStart = AgentStart(), ct=Depends(c), usuario=De
         sa = await sessoes.iniciar_motorista(ct, rid)
     except Exception as e:  # noqa: BLE001
         raise erro_http(e)
-    return {"sessionId": sa.id, "agentId": sa.agent_id, "agentUid": sa.agent_uid, "appId": ct.settings.agora_app_id,
-            "channel": sa.canal, "uid": sa.user_uid, "token": tokens.token_cliente(ct.settings, sa.canal, sa.user_uid),
+    return {"sessionId": sa.id, "agentDispatchId": sa.agent_id,
+            "livekitURL": ct.settings.livekit_url, "room": sa.canal,
+            "identity": sessoes.identidade_usuario(sa), "token": sessoes.token_usuario(ct, sa),
             "status": sa.status, "tripId": str(sa.rota_id)}
 
 
@@ -166,7 +166,7 @@ async def call_receiver(body: CallReceiver = CallReceiver(), ct=Depends(c), usua
         lig = await ligacoes.ligar(ct, rid, body.reason, t.id if t else None)
     except Exception as e:  # noqa: BLE001
         raise erro_http(e)
-    return {"callId": lig.id, "channel": lig.canal, "mode": lig.modo, "status": lig.status, "to": lig.numero,
+    return {"callId": lig.id, "room": lig.canal, "mode": lig.modo, "status": lig.status, "to": lig.numero,
             "receiverPage": f"/recebedor?ligacao={lig.id}" if lig.modo == "rtc" else None}
 
 
@@ -250,7 +250,7 @@ def api_route(tripId: Optional[str] = None, driverId: Optional[int] = None):
         "receiver": {"company": r.recebedor_empresa, "name": r.recebedor_nome, "phone": r.recebedor_telefone_e164},
         "driverId": r.motorista_id, "assignedAt": serial(r.atribuida_em) if r.atribuida_em else None,
         "position": {"lat": r.ultima_lat, "lng": r.ultima_lng, "distanceM": r.distancia_m, "etaMin": r.eta_min},
-        "channel": sessoes.canal_motorista(r.id), "driverUid": sessoes.UID_MOTORISTA, "agentUid": sessoes.UID_AGENTE_MOTORISTA,
+        "room": sessoes.canal_motorista(r.id),
     }
 
 

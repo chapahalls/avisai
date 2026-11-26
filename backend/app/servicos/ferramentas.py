@@ -167,7 +167,7 @@ async def _ligar(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
         iniciado_por="llm",
     )
     return {
-        "ok": chamada.status in ("twilio_atendida", "agora_tocando", "atendida"),
+        "ok": chamada.status in ("twilio_atendida", "livekit_tocando", "atendida"),
         "chamada_id": chamada.id,
         "status": chamada.status,
         "twilio_resultado": chamada.twilio_resultado,
@@ -244,7 +244,7 @@ REGISTRO: dict[str, Ferramenta] = {
          "required": ["resposta"]},
         _responder_mensagem_motorista),
     "ligar": Ferramenta(
-        Papel.MOTORISTA, "Liga para um humano quando o motorista pedir ajuda; usa Twilio e fallback Agora RTC auditáveis.",
+        Papel.MOTORISTA, "Liga para um humano quando o motorista pedir ajuda; usa Twilio e fallback LiveKit RTC auditáveis.",
         {"type": "object", "properties": {
             "destino": {"type": "string", "enum": ["operador", "supervisor", "motorista"]},
             "motivo": {"type": "string", "description": "Motivo fiel e curto da ligação."}},

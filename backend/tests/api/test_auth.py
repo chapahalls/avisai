@@ -141,14 +141,17 @@ async def test_sessao_de_voz_so_para_o_dono(client, container, rota_id):
     assert (await client.delete(f"/sessions/{sid}", headers=_bearer(dono))).status_code == 200
 
 
-async def test_token_rtc_so_do_canal_da_propria_rota(client, container, rota_id):
+async def test_token_livekit_so_da_sessao_e_rota_do_motorista(client, container, rota_id):
     container.settings.auth_obrigatoria = True
     dono, outro = await _tokens_dos_motoristas(client, rota_id)
-    params = {"channel": f"avisai-rota-{rota_id}", "uid": 1001}
+    criada = await client.post("/sessions", json={"rota_id": rota_id}, headers=_bearer(dono))
+    assert criada.status_code == 200, criada.text
+    session = criada.json()
+    params = {"room": session["canal"], "identity": session["identity"]}
     assert (await client.get("/token", params=params)).status_code == 401
     assert (await client.get("/token", params=params, headers=_bearer(outro))).status_code == 403
     assert (await client.get("/token", params=params, headers=_bearer(dono))).status_code == 200
-    estranho = {"channel": "outro-canal", "uid": 1001}
+    estranho = {"room": session["canal"], "identity": "identidade-estranha"}
     assert (await client.get("/token", params=estranho, headers=_bearer(dono))).status_code == 403
 
 

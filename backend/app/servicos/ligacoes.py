@@ -3,59 +3,50 @@ import asyncio
 import logging
 from typing import Optional
 
-from ..dominio import agora_payload, prompts
+from ..dominio import prompts
 from ..dominio.enums import ModoLigacao, Papel, StatusLigacao, StatusSessao, TipoEvento
 from ..infra.db import sessao
 from ..infra.models import LigacaoRecebedor, SessaoAgente, TaskCCO
-from ..integracoes import tokens
-from ..integracoes.tunel import url_publica
 from . import consultas, sessoes
 
 log = logging.getLogger("avisai.ligacoes")
 
 
 class DiscadorRTC:
-    """Plano B: segundo agente num canal RTC; o recebedor atende pela página /recebedor."""
+    """Plano B: recebedor entra numa sala LiveKit pelo navegador."""
 
     modo = ModoLigacao.RTC
 
     def __init__(self, c):
         self.c = c
 
-    async def ligar(self, corpo_join: dict, numero: str) -> str:
-        return await self.c.agora.join(corpo_join)
+    async def ligar(self, room: str, numero: str, identity: str) -> str:
+        return identity
 
-    async def encerrar(self, agent_id: str, canal: str, agent_uid: int) -> None:
-        await self.c.agora.leave(agent_id, canal, agent_uid)
+    async def encerrar(self, room: str, identity: str) -> None:
+        await self.c.livekit.remove(room, identity)
 
-    async def estado(self, agent_id: str, canal: str, agent_uid: int) -> Optional[str]:
-        return None
+    async def estado(self, room: str, identity: str) -> Optional[str]:
+        return "answered" if await self.c.livekit.participant_present(room, identity) else None
 
 
 class DiscadorSIP:
-    """Plano A: ligação telefônica real (POST /call). Exige número importado na Agora."""
+    """Plano A: ligação telefônica real pelo outbound SIP trunk do LiveKit."""
 
     modo = ModoLigacao.SIP
 
     def __init__(self, c):
         self.c = c
 
-    async def ligar(self, corpo_join: dict, numero: str) -> str:
-        s = self.c.settings
-        if not s.agora_sip_from_number:
-            raise RuntimeError("AGORA_SIP_FROM_NUMBER não configurado (número importado na Agora)")
-        canal = corpo_join["properties"]["channel"]
-        corpo = agora_payload.montar_call(
-            corpo_join, para=numero, de=s.agora_sip_from_number, sip_uid=sessoes.UID_RECEBEDOR,
-            sip_token=tokens.token_rtc(s, canal, sessoes.UID_RECEBEDOR),
-        )
-        return await self.c.agora.call(corpo)
+    async def ligar(self, room: str, numero: str, identity: str) -> str:
+        return await self.c.livekit.dial(room, numero, identity)
 
-    async def encerrar(self, agent_id: str, canal: str, agent_uid: int) -> None:
-        await self.c.agora.hangup(agent_id, canal, agent_uid)
+    async def encerrar(self, room: str, identity: str) -> None:
+        await self.c.livekit.remove(room, identity)
 
-    async def estado(self, agent_id: str, canal: str, agent_uid: int) -> Optional[str]:
-        return (await self.c.agora.call_status(agent_id, canal, agent_uid)).get("state")
+    async def estado(self, room: str, identity: str) -> Optional[str]:
+        estado = await self.c.livekit.sip_call_status(room, identity)
+        return {"active": "answered", "hangup": "hangup"}.get(estado)
 
 
 def discador(c, modo: str):
@@ -84,7 +75,6 @@ async def ligar(c, rota_id: int, motivo: str, task_id: Optional[int] = None, det
         s.refresh(lig)
         lig.canal = sessoes.canal_recebedor(lig.id)
         sa = SessaoAgente(rota_id=rota_id, papel=Papel.RECEBEDOR, ligacao_id=lig.id, canal=lig.canal,
-                          agent_uid=sessoes.UID_AGENTE_RECEBEDOR, user_uid=sessoes.UID_RECEBEDOR,
                           llm_mode="custom", criada_em=c.relogio.agora())
         s.add(sa)
         s.commit()
@@ -102,26 +92,18 @@ async def ligar(c, rota_id: int, motivo: str, task_id: Optional[int] = None, det
         parado = falar_horas(consultas.resumo_estadia(c, e).horas_paradas)
     try:
         prompt, abertura = prompts.recebedor(r, nome_mot, empresa, motivo, parado, detalhe)
-        url = sessoes.llm_url(c, sa.id)
-        if not url:
-            raise RuntimeError("a ligação ao recebedor exige LLM_MODE=custom (ferramenta registrar_resposta_recebedor)")
-        corpo = agora_payload.montar_join(
-            agora_payload.ConfigVoz.de(c.settings),
-            nome=agora_payload.nome_unico(f"avisai-recebedor-l{lig.id}"),
-            canal=lig.canal, token=tokens.token_agente(c.settings, lig.canal, sa.agent_uid),
-            agent_uid=sa.agent_uid, remote_uid=sa.user_uid, prompt=prompt, saudacao=abertura,
-            voice_id=c.settings.tts_voice_id_recebedor, llm_url=url, sessao_id=sa.id, idle_timeout=60,
-            termos_rota=[r.recebedor_empresa, r.placa, empresa, "doca", "previsão"],
-        )
+        termos = [r.recebedor_empresa, r.placa, empresa, "doca", "previsão"]
+        sa = await sessoes._iniciar(c, sa, prompt, abertura, termos)
+        sip_identity = f"sip-recebedor-{lig.id}"
         try:
-            agent_id = await discador(c, modo).ligar(corpo, lig.numero)
+            agent_id = await discador(c, modo).ligar(lig.canal, lig.numero, sip_identity)
         except Exception as e_sip:
             if modo != ModoLigacao.SIP:
                 raise
-            c.eventos.registrar(TipoEvento.FALLBACK_PLANO_B, f"Ligação telefônica falhou ({e_sip}); seguindo pelo canal RTC.",
+            c.eventos.registrar(TipoEvento.FALLBACK_PLANO_B, f"Ligação telefônica falhou ({e_sip}); seguindo pela sala LiveKit.",
                                 rota_id, ligacao_id=lig.id)
             modo = ModoLigacao.RTC
-            agent_id = await discador(c, modo).ligar(corpo, lig.numero)
+            agent_id = await discador(c, modo).ligar(lig.canal, lig.numero, sessoes.identidade_usuario(sa))
     except Exception as e_fim:
         _atualizar(LigacaoRecebedor, lig.id, status=StatusLigacao.FALHOU, erro=str(e_fim)[:500], encerrada_em=c.relogio.agora())
         _atualizar(SessaoAgente, sa.id, status=StatusSessao.FALHOU, erro=str(e_fim)[:500])
@@ -129,9 +111,9 @@ async def ligar(c, rota_id: int, motivo: str, task_id: Optional[int] = None, det
         raise
 
     lig = _atualizar(LigacaoRecebedor, lig.id, agent_id=agent_id, status=StatusLigacao.EM_ANDAMENTO, modo=modo)
-    _atualizar(SessaoAgente, sa.id, agent_id=agent_id, status=StatusSessao.ATIVA)
     extra = {}
     if modo == ModoLigacao.RTC:
+        from ..integracoes.tunel import url_publica
         extra["pagina_recebedor"] = f"{url_publica(c.settings)}/recebedor?ligacao={lig.id}"
     c.eventos.registrar(
         TipoEvento.LIGACAO_RECEBEDOR,
@@ -160,12 +142,15 @@ async def _vigiar(c, ligacao_id: int) -> None:
         if lig.status != StatusLigacao.EM_ANDAMENTO:
             return
         try:
-            estado = await discador(c, lig.modo).estado(lig.agent_id, lig.canal, sessoes.UID_AGENTE_RECEBEDOR)
+            identity = f"sip-recebedor-{lig.id}" if lig.modo == ModoLigacao.SIP else f"recebedor-{lig.id}"
+            estado = await discador(c, lig.modo).estado(lig.canal, identity)
         except Exception:  # noqa: BLE001
             estado = None
         if estado == "answered" and not lig.atendida:
             _atualizar(LigacaoRecebedor, ligacao_id, atendida=True)
         if estado == "hangup":
+            break
+        if estado is None and lig.modo == ModoLigacao.SIP and lig.atendida:
             break
     with sessao() as s:
         lig = s.get(LigacaoRecebedor, ligacao_id)
@@ -177,7 +162,7 @@ async def _vigiar(c, ligacao_id: int) -> None:
         f"Recebedor não respondeu à ligação das {lig.iniciada_em:%H:%M} UTC para {lig.numero}. Tentativa registrada como prova.",
         lig.rota_id, ligacao_id=ligacao_id, atendida=lig.atendida,
     )
-    await sessoes.VozAgora(c).falar_motorista(
+    await sessoes.VozLiveKit(c).falar_motorista(
         lig.rota_id, "O recebimento não atendeu. Deixei a tentativa registrada como prova pra estadia, e o CCO tá sabendo.")
     if lig.sessao_id:
         await sessoes.encerrar(c, lig.sessao_id)
@@ -235,7 +220,7 @@ async def registrar_resposta(c, sessao_id: int, previsao: Optional[str], doca: O
         texto = f"O recebimento disse que hoje não recebe, {previsao or 'sem previsão'}. Pela regra da transportadora: {regra}"
     else:
         texto = _frase_motorista(previsao, doca, motivo, resumo)
-    entregue = await sessoes.VozAgora(c).falar_motorista(lig.rota_id, texto, prioridade="INTERRUPT")
+    entregue = await sessoes.VozLiveKit(c).falar_motorista(lig.rota_id, texto, prioridade="INTERRUPT")
     if entregue:
         _atualizar(LigacaoRecebedor, lig.id, enviada_motorista_em=c.relogio.agora())
     c.em_segundo_plano(f"encerrar-lig-{lig.id}", _encerrar_depois(c, sessao_id, c.settings.encerrar_ligacao_apos_s))

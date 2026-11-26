@@ -14,8 +14,7 @@ router = APIRouter(tags=["rotas"])
 
 def rota_publica(r: Rota, com_trajeto: bool = False) -> dict:
     d = r.model_dump(exclude=None if com_trajeto else {"trajeto"})
-    d.update(canal_motorista=sessoes.canal_motorista(r.id), uid_motorista=sessoes.UID_MOTORISTA,
-             uid_cco=sessoes.UID_CCO, uid_agente=sessoes.UID_AGENTE_MOTORISTA)
+    d.update(canal_motorista=sessoes.canal_motorista(r.id))
     with sessao() as s:
         m = s.get(Motorista, r.motorista_id) if r.motorista_id else None
     d["motorista_nome"] = m.nome if m else None

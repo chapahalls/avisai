@@ -1,10 +1,10 @@
 """Peças 1 e 2: tokens e sessões do agente."""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import select
 
 from ..infra.db import sessao
 from ..infra.models import SessaoAgente
-from ..integracoes import tokens
+from ..integracoes.livekit import token as token_livekit
 from ..servicos import sessoes
 from .deps import c, erro_http, exigir_acesso_sessao, exigir_login, verificar_acesso_rota
 from .schemas import Fala, NovaSessao, SessaoOut, TokenOut
@@ -13,33 +13,41 @@ router = APIRouter(tags=["agentes"])
 
 
 @router.get("/token", response_model=TokenOut)
-def token(channel: str = Query(...), uid: int = Query(...), ct=Depends(c), usuario=Depends(exigir_login)):
-    """Token RTC+RTM (AccessToken2, 24h) para motorista, CCO ou recebedor. O motorista só pede o canal da própria rota."""
-    if uid <= 0:
-        raise HTTPException(400, "uid deve ser > 0")
-    if ct.settings.auth_obrigatoria and usuario and usuario.get("role") != "cco":
-        prefixo = sessoes.canal_motorista(0)[:-1]
-        rota_do_canal = channel.removeprefix(prefixo)
-        if not (channel.startswith(prefixo) and rota_do_canal.isdigit()):
-            raise HTTPException(403, "canal fora da rota do motorista")
-        verificar_acesso_rota(ct, usuario, int(rota_do_canal))
+def token(request: Request, room: str = Query(...), identity: str = Query(..., min_length=1, max_length=128),
+          ct=Depends(c), usuario=Depends(exigir_login)):
+    """Token LiveKit curto para um participante autorizado da sala."""
+    with sessao() as db:
+        sa = db.exec(select(SessaoAgente).where(SessaoAgente.canal == room,
+                                                SessaoAgente.status == "ativa")).first()
+    if not sa:
+        raise HTTPException(404, "sala sem sessão ativa")
+    monitor = identity == f"cco-monitor-{sa.id}"
+    if identity != sessoes.identidade_usuario(sa) and not monitor:
+        raise HTTPException(403, "identidade não autorizada nesta sala")
+    if monitor:
+        if ct.settings.auth_obrigatoria and (usuario is None or usuario.get("role") != "cco"):
+            raise HTTPException(403, "monitor exclusivo da central (papel cco)")
+    else:
+        verificar_acesso_rota(ct, usuario, sa.rota_id)
     try:
-        t = tokens.token_cliente(ct.settings, channel, uid)
+        t = token_livekit(ct.settings, room, identity, publish=not monitor,
+                          publish_data=False, ttl=3600)
     except Exception as e:  # noqa: BLE001
         raise erro_http(e)
-    return TokenOut(app_id=ct.settings.agora_app_id, channel=channel, uid=uid, token=t)
+    return TokenOut(url=ct.settings.livekit_url, room=room, identity=identity, token=t)
 
 
 def _publica(ct, sa: SessaoAgente) -> SessaoOut:
     d = sa.model_dump()
-    d["app_id"] = ct.settings.agora_app_id
-    d["token"] = tokens.token_cliente(ct.settings, sa.canal, sa.user_uid) if ct.settings.agora_configurada() else None
+    d["livekit_url"] = ct.settings.livekit_url or None
+    d["identity"] = sessoes.identidade_usuario(sa)
+    d["token"] = sessoes.token_usuario(ct, sa) if ct.settings.livekit_configurada() else None
     return SessaoOut(**d)
 
 
 @router.post("/sessions", response_model=SessaoOut)
 async def criar_sessao(body: NovaSessao, ct=Depends(c), usuario=Depends(exigir_login)):
-    """Inicia o agente ConvoAI no canal do motorista. Devolve canal, uid e token do motorista."""
+    """Despacha o agente LiveKit e devolve sala, identidade e token do motorista."""
     verificar_acesso_rota(ct, usuario, body.rota_id)
     try:
         sa = await sessoes.iniciar_motorista(ct, body.rota_id)
@@ -64,7 +72,7 @@ async def encerrar_sessao(sessao_id: int, ct=Depends(c)):
 
 @router.post("/sessions/{sessao_id}/speak", dependencies=[Depends(exigir_acesso_sessao)])
 async def falar(sessao_id: int, body: Fala, ct=Depends(c)):
-    """Fala proativa manual (teste). O fluxo automático usa o mesmo /speak da Agora."""
+    """Fala proativa manual (teste). Os avisos automáticos usam o mesmo canal LiveKit."""
     try:
         await sessoes.falar(ct, sessao_id, body.texto, body.prioridade)
     except Exception as e:  # noqa: BLE001

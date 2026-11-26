@@ -210,14 +210,12 @@ class Estadia(SQLModel, table=True):
 
 
 class SessaoAgente(SQLModel, table=True):
-    """Uma instância de agente ConvoAI (motorista ou recebedor)."""
+    """Uma instância de agente LiveKit (motorista, recebedor ou operador)."""
     id: Optional[int] = Field(default=None, primary_key=True)
     rota_id: int = Field(foreign_key="rota.id")
     papel: str = "motorista"  # motorista | recebedor
     ligacao_id: Optional[int] = Field(default=None, foreign_key="ligacaorecebedor.id")
     canal: str
-    agent_uid: int
-    user_uid: int
     agent_id: Optional[str] = None
     status: str = "iniciando"  # iniciando | ativa | encerrada | falhou
     llm_mode: str = "custom"
@@ -285,11 +283,11 @@ class ChamadaAgente(SQLModel, table=True):
     rota_id: int = Field(foreign_key="rota.id", index=True)
     destino: str  # operador | supervisor | motorista
     motivo: str
-    # iniciada | twilio_atendida | agora_tocando | atendida | sem_resposta | escalada | falhou
+    # iniciada | twilio_atendida | livekit_tocando | atendida | sem_resposta | escalada | falhou
     status: str = "iniciada"
     twilio_sid: Optional[str] = None
     twilio_resultado: Optional[str] = None
-    agora_canal: Optional[str] = None
+    livekit_room: Optional[str] = None
     sessao_id: Optional[int] = Field(default=None, foreign_key="sessaoagente.id")
     iniciada_em: datetime = Field(default_factory=agora)
     atendida_em: Optional[datetime] = None

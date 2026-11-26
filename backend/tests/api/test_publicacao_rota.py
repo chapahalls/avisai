@@ -54,11 +54,11 @@ async def test_publicar_ja_com_motorista_atribui_direto(client):
     assert eventos("rota_atribuida")
 
 
-async def test_motorista_com_agente_aberto_ouve_a_rota_nova(client, fake_agora):
+async def test_motorista_com_agente_aberto_ouve_a_rota_nova(client, fake_livekit):
     await client.post("/sessions", json={"rota_id": 1})  # Carlos (motorista 1) está com o agente aberto
     rota = (await client.post("/rotas", json=NOVA)).json()
     await client.post(f"/rotas/{rota['id']}/atribuir", json={"motorista_id": 1})
-    fala = fake_agora.falas()[-1]
+    fala = fake_livekit.falas()[-1]
     assert "Rota nova" in fala and "Atacado Sorocaba" in fala and "18 toneladas" in fala
 
 

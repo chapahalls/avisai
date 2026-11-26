@@ -20,17 +20,17 @@ async def test_posicao_longe_fica_em_transito_sem_disparos(client):
     assert r["status"] == "em_transito" and r["disparos"] == []
 
 
-async def test_aproximacao_dispara_uma_vez_e_avisa_motorista(client, fake_agora):
+async def test_aproximacao_dispara_uma_vez_e_avisa_motorista(client, fake_livekit):
     await client.post("/sessions", json={"rota_id": 1})
     r = (await client.post("/rotas/1/posicao", json=PERTO)).json()
     assert r["disparos"] == ["APROXIMACAO"] and r["status"] == "aproximando"
     assert eventos("aproximacao")
-    assert any("Faltam" in f for f in fake_agora.falas())
+    assert any("Faltam" in f for f in fake_livekit.falas())
     r2 = (await client.post("/rotas/1/posicao", json=PERTO)).json()
     assert r2["disparos"] == []
 
 
-async def test_chegada_cria_task_pendente_e_inicia_estadia(client, fake_agora):
+async def test_chegada_cria_task_pendente_e_inicia_estadia(client, fake_livekit):
     await client.post("/sessions", json={"rota_id": 1})
     r = (await client.post("/rotas/1/posicao", json=DESTINO)).json()
     assert "CHEGADA" in r["disparos"] and r["status"] == "no_destino"
@@ -39,7 +39,7 @@ async def test_chegada_cria_task_pendente_e_inicia_estadia(client, fake_agora):
     with sessao() as s:
         e = s.exec(select(Estadia)).one()
     assert e.capacidade_t == 30 and e.fim is None  # capacidade do veículo da rota do seed
-    assert any("Confirma a chegada" in f and "estadia" in f for f in fake_agora.falas())
+    assert any("Confirma a chegada" in f and "estadia" in f for f in fake_livekit.falas())
 
 
 async def test_chegada_repetida_nao_duplica_task(client):
@@ -49,10 +49,10 @@ async def test_chegada_repetida_nao_duplica_task(client):
     assert len(_tasks()) == 1
 
 
-async def test_sem_sessao_do_motorista_fala_vira_evento_sem_erro(client, fake_agora):
+async def test_sem_sessao_do_motorista_fala_vira_evento_sem_erro(client, fake_livekit):
     r = await client.post("/rotas/1/posicao", json=PERTO)
     assert r.status_code == 200
-    assert fake_agora.speaks == []
+    assert fake_livekit.speaks == []
     fala = eventos("fala_agente")[-1]
     assert fala.dados["entregue"] is False
 

@@ -9,7 +9,7 @@ from ..dominio.enums import StatusRota, TipoEvento
 from ..infra.db import sessao
 from ..infra.models import Motorista, Rota, Usuario
 from . import consultas
-from .sessoes import VozAgora
+from .sessoes import VozLiveKit
 
 
 def motoristas() -> list[Motorista]:
@@ -113,4 +113,4 @@ async def _avisar_motorista(c, motorista_id: int, r: Rota) -> None:
         return
     texto = (f"Rota nova: {r.origem_nome} para {r.destino_nome}, {r.carga_t:g} toneladas de {r.carga_descricao}"
              + (f", descarga {r.janela_descarga}." if r.janela_descarga else "."))
-    await VozAgora(c).falar_motorista(sa.rota_id, texto)
+    await VozLiveKit(c).falar_motorista(sa.rota_id, texto)

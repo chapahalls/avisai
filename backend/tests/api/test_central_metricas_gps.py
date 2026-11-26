@@ -17,11 +17,11 @@ def corpo(fala):
 
 # ---------- 4. pedido da central ----------
 
-async def test_central_pergunta_agente_repassa_e_resposta_volta_estruturada(client, fake_agora, fake_llm):
+async def test_central_pergunta_agente_repassa_e_resposta_volta_estruturada(client, fake_livekit, fake_llm):
     sid = (await client.post("/sessions", json={"rota_id": 1})).json()["id"]
     r = await client.post("/rotas/1/solicitacoes", json={"pergunta": "Qual o número do lacre?"})
     assert r.status_code == 200 and r.json()["status"] == "perguntada"
-    assert any("A central pergunta" in f and "lacre" in f for f in fake_agora.falas())
+    assert any("A central pergunta" in f and "lacre" in f for f in fake_livekit.falas())
     fake_llm.respostas = [tool_call("responder_central", '{"resposta":"lacre 4471"}'), "Passei pra central."]
     await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("o lacre é 4471"), headers=AUTH)
     sols = (await client.get("/rotas/1/solicitacoes")).json()

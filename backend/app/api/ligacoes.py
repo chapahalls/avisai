@@ -6,8 +6,8 @@ from fastapi.responses import FileResponse
 from sqlmodel import select
 
 from ..infra.db import sessao
-from ..infra.models import ChamadaAgente, LigacaoRecebedor
-from ..integracoes import tokens
+from ..infra.models import ChamadaAgente, LigacaoRecebedor, SessaoAgente
+from ..integracoes.livekit import token as token_livekit
 from ..servicos import chamadas_agente, consultas, ligacoes, sessoes
 from .deps import c, erro_http, exigir_acesso_rota, exigir_cco, limitar_ligacao
 from .schemas import Ligar
@@ -35,20 +35,24 @@ def listar():
 
 def _com_token(ct, lig: LigacaoRecebedor) -> dict:
     d = lig.model_dump()
-    if lig.canal and ct.settings.agora_configurada():
-        d.update(app_id=ct.settings.agora_app_id, uid=sessoes.UID_RECEBEDOR,
-                 token=tokens.token_cliente(ct.settings, lig.canal, sessoes.UID_RECEBEDOR))
+    if lig.canal and ct.settings.livekit_configurada() and lig.sessao_id:
+        with sessao() as db:
+            sa = db.get(SessaoAgente, lig.sessao_id)
+        if sa:
+            d.update(url=ct.settings.livekit_url, room=lig.canal,
+                     identity=sessoes.identidade_usuario(sa), token=sessoes.token_usuario(ct, sa))
     return d
 
 
 def _operador_publico(ct, chamada: ChamadaAgente) -> dict:
     d = chamada.model_dump()
-    if chamada.agora_canal and ct.settings.agora_configurada():
+    if chamada.livekit_room and ct.settings.livekit_configurada():
+        identity = f"operador-{chamada.id}"
         d.update(
-            app_id=ct.settings.agora_app_id,
-            channel=chamada.agora_canal,
-            uid=sessoes.UID_CCO,
-            token=tokens.token_cliente(ct.settings, chamada.agora_canal, sessoes.UID_CCO),
+            url=ct.settings.livekit_url,
+            room=chamada.livekit_room,
+            identity=identity,
+            token=token_livekit(ct.settings, chamada.livekit_room, identity, name="operador"),
         )
     return d
 
@@ -76,7 +80,7 @@ def chamada_operador_atual(ct=Depends(c)):
     """A página /operador consulta a chamada RTC pendente e recebe somente o token dela."""
     with sessao() as s:
         chamada = s.exec(
-            select(ChamadaAgente).where(ChamadaAgente.status == "agora_tocando")
+            select(ChamadaAgente).where(ChamadaAgente.status == "livekit_tocando")
             .order_by(ChamadaAgente.id.desc())
         ).first()
     return {"chamada": _operador_publico(ct, chamada) if chamada else None}

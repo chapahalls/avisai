@@ -17,19 +17,18 @@ export type TipoEvento =
   | "pergunta_documento" | "chamado_cco_aberto" | "chamado_cco_lembrete" | "chamado_cco_respondido" | "chamado_cco_timeout"
   | "alerta_motorista" | "decisao_agente"
   | "mensagem_motorista_enviada" | "mensagem_motorista_falada" | "mensagem_motorista_respondida" | "motorista_offline"
-  | "chamada_twilio_falhou" | "chamada_agora_iniciada" | "chamada_agora_atendida" | "chamada_sem_resposta" | "escalada_supervisor";
+  | "chamada_twilio_falhou" | "chamada_livekit_iniciada" | "chamada_livekit_atendida" | "chamada_sem_resposta" | "escalada_supervisor";
 
 export interface Sessao {
   id: number;
   rota_id: number;
   papel: "motorista" | "recebedor" | "operador";
   canal: string;
-  agent_uid: number;
-  user_uid: number;
   agent_id: string | null;
   status: "iniciando" | "ativa" | "encerrada" | "falhou";
   llm_mode: string;
-  app_id: string | null;
+  livekit_url: string | null;
+  identity: string | null;
   token: string | null;
   erro?: string | null;
 }
@@ -134,9 +133,6 @@ export interface Rota {
   recebedor_nome: string;
   motorista_nome: string | null;
   canal_motorista: string;
-  uid_motorista: number;
-  uid_cco: number;
-  uid_agente: number;
 }
 
 export interface Snapshot {
@@ -162,13 +158,3 @@ export interface MensagensStream {
 }
 export type CanalStream = keyof MensagensStream;
 export const CANAIS: CanalStream[] = ["snapshot", "evento", "task", "posicao", "fala", "contador", "reset", "chamado"];
-
-/** UIDs fixos (README > Canais e UIDs). */
-export const UID = {
-  MOTORISTA: 1001,
-  CCO: 2001,
-  RECEBEDOR: 3001,
-  AGENTE_MOTORISTA: 9001,
-  AGENTE_RECEBEDOR: 9002,
-  AGENTE_OPERADOR: 9003,
-} as const;

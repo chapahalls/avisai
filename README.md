@@ -17,12 +17,12 @@ Licença: [MIT](LICENSE). As tags `v1.0-entrega` a `v1.3-entrega` marcam as vers
 **Repositórios do projeto** (todos públicos):
 | Repo | O quê | Responsável |
 |---|---|---|
-| [rodarglobal/rodar-backend](https://github.com/rodarglobal/rodar-backend) | este backend: API, agente de voz (Agora ConvoAI), regras, infra Docker | Lucas |
-| [rodarglobal/rodar-mobile](https://github.com/rodarglobal/rodar-mobile) | app do motorista (React Native / Expo): voz pela Agora, mapa, sincronização com o backend | Jeferson |
+| [rodarglobal/rodar-backend](https://github.com/rodarglobal/rodar-backend) | este backend: API, agente de voz LiveKit, regras, infra Docker | Lucas |
+| [rodarglobal/rodar-mobile](https://github.com/rodarglobal/rodar-mobile) | app do motorista (React Native / Expo): voz LiveKit, mapa, sincronização com o backend | Jeferson |
 | [rodarglobal/rodar-web](https://github.com/rodarglobal/rodar-web) | painel do CCO (React + Vite): frota, Tasks, ligações, indicadores, publicação de rotas | Henry |
 | [rodarglobal/rodar-ideas](https://github.com/rodarglobal/rodar-ideas) | pesquisa do problema com fontes, decisões de produto (ADRs) e plano (não entra na submissão) | time |
 
-Toda a voz roda na **Agora Conversational AI**. O áudio vai do aparelho direto para a nuvem da Agora; este backend é o plano de controle: tokens, `/join`, `/leave`, `/speak` e `/call`, o LLM próprio com ferramentas e as regras de negócio.
+O áudio WebRTC e o worker de voz rodam no **LiveKit**. Os clientes publicam áudio diretamente na sala; o worker usa Gemini Live pelo LiveKit Inference e encaminha ferramentas, transcrições e eventos ao gateway do backend. A telefonia opcional usa LiveKit SIP.
 
 ## Para o júri
 
@@ -31,7 +31,7 @@ Toda a voz roda na **Agora Conversational AI**. O áudio vai do aparelho direto 
 | **Trilha** | Logística & automação |
 | **Em uma frase** | Um agente de voz que avisa o recebedor antes da chegada, conta a estadia do caminhão parado (Lei 11.442) e só chama a central quando alguém precisa decidir. |
 | **Demo no ar** | [painel do CCO e site no modo Demo](https://rodarglobal.github.io/rodar-web/) (clique em **Entrar com SSO**) · [app do motorista no navegador](https://rodarglobal.github.io/rodar-mobile/) |
-| **Ver sem instalar nada** | [tour em vídeo de 1 min](https://github.com/rodarglobal/rodar-web/blob/main/docs/assets/readme/tour.mp4) do site e do painel · [tour do app do motorista (1 min)](https://github.com/rodarglobal/rodar-mobile/blob/main/docs/assets/readme/tour.mp4) · [validação ponta a ponta com a api real: 33 de 33 etapas](https://github.com/rodarglobal/rodar-backend/blob/main/evidence/validacao.md) · [telas do app](https://github.com/rodarglobal/rodar-mobile#telas-do-aplicativo) |
+| **Ver sem instalar nada** | [tour em vídeo de 1 min](https://github.com/rodarglobal/rodar-web/blob/main/docs/assets/readme/tour.mp4) do site e do painel · [tour do app do motorista (1 min)](https://github.com/rodarglobal/rodar-mobile/blob/main/docs/assets/readme/tour.mp4) · [validação ponta a ponta histórica, anterior à troca do provedor de voz](https://github.com/rodarglobal/rodar-backend/blob/main/evidence/validacao.md) · [telas do app](https://github.com/rodarglobal/rodar-mobile#telas-do-aplicativo) |
 | **Repositórios** | [rodar-backend](https://github.com/rodarglobal/rodar-backend) (este) · [rodar-web](https://github.com/rodarglobal/rodar-web) · [rodar-mobile](https://github.com/rodarglobal/rodar-mobile) |
 | **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 554 testes automatizados: 318 no backend, 127 no web, 109 no mobile |
 | **Segurança** | JWT assinado no login e exigido em toda escrita (padrão), papel `cco` nas ações da central, motorista só na própria rota, CORS restrito, segredo do LLM e limite de ligações. O que falta para produção está [escrito aqui](#o-que-falta-para-produção) |
@@ -55,7 +55,7 @@ O backend coordena a operação que começa na viagem atribuída e termina na de
 |---|---|---|
 | Operação | rotas, geocerca, Tasks, escalonamento, estadia, ocorrências, pedidos e timeline | seed, GPS e documentos de demonstração |
 | Tempo real | SSE do CCO e WebSocket para rota/motorista | sem replay/cursor garantido; clientes precisam reconciliar por REST |
-| Voz e chamadas | controle de sessão Agora, LLM com ferramentas, contingência local, cascata Twilio → Agora RTC | PSTN/RTC reais exigem credenciais, URL pública e permissões externas |
+| Voz e chamadas | LiveKit RTC/Agents com Gemini Live, ferramentas auditadas no backend, cascata Twilio → LiveKit RTC/SIP | LiveKit Cloud/Inference, PSTN e RTC exigem credenciais e configuração de trunk |
 | Arquivos | metadados no Postgres e binários em `ARQUIVOS_DIR`; só a central anexa, e só a central e o motorista da rota leem e baixam | sem versionamento de arquivos |
 | Identidade e acesso | perfis persistidos; `/auth/sso` emite **JWT assinado** (HS256, papel e validade); com `AUTH_OBRIGATORIA=true` (padrão) toda escrita exige token, as ações da central exigem papel `cco` e o motorista só age na rota atribuída a ele; CORS só nas origens de `CORS_ORIGENS`; segredo do LLM comparado em tempo constante; limite de ligações manuais por rota | o login continua simulado (sem senha); as leituras (`GET`, SSE e WebSocket) seguem abertas |
 
@@ -66,11 +66,11 @@ Os frontends devem conservar essa distinção. Não use um campo ausente da API 
 ## Dependências
 
 - **Para rodar:** Docker com Compose v2. Nada roda direto na máquina; as imagens instalam o resto.
-- **Backend (Python 3.12):** FastAPI, Uvicorn, SQLModel, Alembic, psycopg, pydantic-settings, httpx e `agora-agents` (só o gerador de tokens). As versões fixadas estão em `backend/requirements.txt`; as de teste (pytest, pytest-asyncio, respx), em `backend/requirements-dev.txt`.
+- **Backend e worker (Python 3.12):** FastAPI, Uvicorn, SQLModel, Alembic, psycopg, pydantic-settings e LiveKit API/Agents (1.8.8+ para Gemini Live 3.8). As dependências estão em `backend/requirements.txt`; as de desenvolvimento em `backend/requirements-dev.txt`.
 - **Infra:** Postgres 16 e cloudflared (túnel público), ambos via `docker-compose.yml`.
 - **Serviços externos:**
-  - Agora Conversational AI (App ID e App Certificate; Customer ID e Secret opcionais);
-  - LLM compatível com OpenAI (opcional; sem ele, vale a contingência);
+  - LiveKit Cloud (URL, API key e secret; Inference para Gemini Live);
+  - LLM compatível com OpenAI (opcional para os endpoints de conversa e avaliação; a voz usa o modelo LiveKit configurado);
   - Twilio, só para a ligação telefônica real, que é opcional.
 
 ## Como rodar (clone limpo, só Docker)
@@ -80,11 +80,11 @@ git clone https://github.com/rodarglobal/rodar-backend.git && cd rodar-backend
 ```
 
 ```bash
-cp .env.example .env   # preencha AGORA_APP_ID, AGORA_APP_CERTIFICATE, LLM_API_KEY e AUTH_SEGREDO (a api não sobe sem ele)
+cp .env.example .env   # preencha LIVEKIT_URL, LIVEKIT_API_KEY/SECRET, AUTH_SEGREDO e LLM_API_KEY
 ```
 
 ```bash
-make up                # Postgres + api (migra e roda o seed) + túnel cloudflared
+make up                # Postgres + api + worker de voz + túnel cloudflared
 ```
 
 ```bash
@@ -96,7 +96,7 @@ docker compose run --rm test ruff check .   # lint (o mesmo do CI)
 ```
 
 - A api fica em `http://localhost:8000`, com a doc interativa em `/docs`. `curl localhost:8000/health` mostra a URL pública do túnel (`public_url`).
-- O túnel é obrigatório: a nuvem da Agora precisa chamar o nosso `/v1/chat/completions`. A URL do quick tunnel é descoberta sozinha, e você pode fixá-la em `PUBLIC_URL` se preferir.
+- O worker usa a rede interna do Compose para chamar `/v1/chat/completions`; o túnel serve aos clientes fora da rede. A URL do quick tunnel é descoberta sozinha, e pode ser fixada em `PUBLIC_URL`.
 - **Se o túnel reiniciar, a URL muda.** Abra uma nova sessão depois disso.
 - Para a demo, use `ESTADIA_ACELERACAO=600` (1 s real conta 10 min de estadia) e `CCO_INTERVALO_S=20`.
 
@@ -121,8 +121,8 @@ Para refazer: `POST /rotas/1/reset`, ou o botão "Reset da demo" na `/teste`.
 | Token de acesso | `POST /auth/sso` devolve um JWT HS256 com `sub`, `email`, `role`, `driverId`, `iat` e `exp` (`AUTH_TOKEN_VALIDADE_H`, padrão 12 h), assinado com `AUTH_SEGREDO` | `infra/auth.py` |
 | Login obrigatório | `AUTH_OBRIGATORIA=true` é o padrão: toda escrita exige `Authorization: Bearer <token>` (401 sem token). A api não sobe se `AUTH_SEGREDO` tiver menos de 32 caracteres. `false` só em desenvolvimento local | `infra/settings.py`, `main.py` (`checar_segredo_auth`) |
 | Papel da central | publicar e atribuir rota, cadastrar motorista, assumir Task, responder chamado, mandar mensagem ou pedido ao motorista, anexar arquivo, atender chamada e ligar pelo CCO exigem papel `cco` (403 com papel errado) | `api/deps.py` (`exigir_cco`) |
-| Dono da rota | GPS, chegada, descarga, ligação ao recebedor, reset, arquivos, sessão de voz, `/agent/*`, `/call/receiver`, outbox (`POST /events`) e token RTC: o motorista só age na rota atribuída a ele (claim `driverId`, 403 na rota de outro); a central age em qualquer rota | `api/deps.py` (`exigir_acesso_rota`, `exigir_acesso_sessao`) |
-| LLM próprio | a Agora manda `LLM_SHARED_SECRET` como Bearer; a comparação é exata e em tempo constante. Sem segredo, a api avisa no log | `api/llm.py` |
+| Dono da rota | GPS, chegada, descarga, ligação ao recebedor, reset, arquivos, falas offline, sessão de voz, `/agent/*`, `/call/receiver`, outbox (`POST /events`) e token LiveKit: o motorista só age na rota atribuída a ele (claim `driverId`, 403 na rota de outro); a central age em qualquer rota | `api/deps.py` (`exigir_acesso_rota`, `exigir_acesso_sessao`) |
+| LLM próprio | o worker LiveKit manda `LLM_SHARED_SECRET` como Bearer; a comparação é exata e em tempo constante. Sem segredo, a api avisa no log | `api/llm.py` |
 | CORS | só as origens de `CORS_ORIGENS` (painel local e a demo publicada) | `main.py` |
 | Custo de telefonia | no máximo `LIGACOES_MANUAIS_MAX` ligações manuais por rota a cada `LIGACOES_MANUAIS_JANELA_S` (429 depois disso); as ligações automáticas do agente não entram no limite | `infra/auth.py`, `api/deps.py` |
 
@@ -149,14 +149,14 @@ O que está acima basta para a demo, não para operar com dados reais. Falta, em
 backend/app/
   dominio/       regras puras: estadia, geocerca, escalonamento, prompts, contingência, documentos e enums
   servicos/      casos de uso: sessões, rotas, Tasks, chamadas, alertas, mensagens, chamados, conversa e ferramentas
-  portas.py      contratos (typing.Protocol): AgoraGateway, LLM, Relogio, Voz, Discador
-  integracoes/   adaptadores reais: Agora REST, Twilio, OpenAI, tokens e túnel
+  portas.py      contratos (typing.Protocol): LiveKitGateway, LLM, Relogio, Voz, Discador
+  integracoes/   adaptadores reais: LiveKit, Twilio, OpenAI e túnel
   api/           routers FastAPI + schemas Pydantic; cada módulo agrupa uma superfície HTTP/WS
   infra/         settings, banco (Postgres/SQLModel), modelos, eventos (pub/sub), container e limite de upload
 backend/alembic/ migrações
 backend/tests/   cenários dado/quando/então: dominio, servicos, integracoes, api
 backend/docs/    perfis de demonstração e contrato de arquivos
-backend/static/  páginas mínimas de motorista e recebedor para testar RTC
+backend/static/  páginas mínimas de motorista e recebedor para testar LiveKit RTC
 clients/         contratos TypeScript e clientes de referência React Native/web
 scripts/simular_rota.py   GPS simulado
 ```
@@ -172,14 +172,14 @@ Os fronts podem seguir o contrato do doc sem mudança. A api também responde na
 
 | Rota do doc | O que faz aqui |
 |---|---|
-| `POST /agent/start` `{tripId}` | inicia o agente e devolve `{sessionId, agentId, agentUid, appId, channel, uid, token}` |
-| `POST /agent/stop` `{sessionId \| agentId}` | `/leave` do agente |
-| `GET /token?channel&uid` | token RTC+RTM |
+| `POST /agent/start` `{tripId}` | inicia o agente e devolve `{sessionId, agentDispatchId, livekitURL, room, identity, token}` |
+| `POST /agent/stop` `{sessionId \| agentId}` | encerra o agente na sala LiveKit |
+| `GET /token?room&identity` | token LiveKit para uma identidade autorizada |
 | `POST /call/receiver` `{tripId, reason}` | liga para o recebedor (plano B ou plano A) |
 | `POST /events` | **outbox idempotente**: `DomainEvent` com `idempotencyKey` (200 na primeira vez, 409 se repetido). Aplica `ArrivalRegistered`, `PickupConfirmed`, `OccurrenceCreated`, `UnloadConfirmed` e `ReportSubmitted` |
 | `POST /rotas/{id}/falas-offline` | **fala gravada sem sinal** (multipart: `audio` WAV/M4A, `idempotencyKey`, `faladoEm`, `duracaoMs`). 201 na primeira vez, 409 se repetida. Em segundo plano: transcreve (`STT_MODEL`, mesma chave do LLM), passa ao agente do motorista com o horário em que foi falada e manda a resposta como `aviso_motorista`. Uma fala por vez por rota, na ordem de chegada. Evento `fala_offline` com `status` (`recebida`, `transcrita`, `processada`, `sem_transcricao`, `erro_transcricao`, `vazia`) |
 | `GET /events?tripId&since` | linha do tempo no formato `DomainEvent {id, idempotencyKey, tripId, type, occurredAt, receivedAt, source, payload}`; serve para o polling de 2 s |
-| `GET /api/route?tripId` | rota do dia: polyline, origem, destino, recebedor, placa, NF, canal e uids |
+| `GET /api/route?tripId` | rota do dia: polyline, origem, destino, recebedor, placa e NF |
 | `GET /api/receivers` | ranking de recebedores: espera média, ligações atendidas, estadia devida, avisados antes da chegada |
 | `GET /api/metrics` | KPIs da seção 6.2: horas paradas, estadia devida, tempo até ação do CCO, tasks escaladas, % avisados, % atendidas, % reportes completos na 1ª, latência do LLM |
 | `GET /api/documents` | NF-e e CT-e da rota; a consulta por voz também lista os nomes disponíveis |
@@ -191,7 +191,7 @@ Os `type` do contrato saem dos nossos eventos: `retirada`→`PickupConfirmed`, `
 
 Extensões fora da lista do doc: `AgentSessionStarted`, `PickupGeofenceEntered`, `ReceiverCallStarted`, `ReceiverCallFailed`, `ReceiverCallFallback`, `ReceiverRefusedToday`, `CentralRequestSent`, `CentralRequestAnswered`, `GpsDivergence`, `VoiceTranscript`.
 
-As variáveis do doc também valem: `AGORA_REST_KEY` e `AGORA_REST_SECRET` (equivalem a `AGORA_CUSTOMER_*`) e `SIP_FROM_NUMBER`. Além do polling, há **SSE** (`/cco/stream`) e **WebSocket** (`/ws`), com entrega instantânea.
+O contrato HTTP e os eventos de negócio foram mantidos; transporte e credenciais de voz agora usam LiveKit. Além do polling, há **SSE** (`/cco/stream`) e **WebSocket** (`/ws`), com entrega instantânea.
 
 ### Publicação de rota e vínculo com o motorista
 1. **CCO publica a rota:** `POST /rotas` com `origem`, `destino`, `recebedor {empresa, nome, telefone_e164}`, `carga_t`, `capacidade_t` (capacidade total do veículo, que é a base da estadia pela Lei 11.442; vazio usa `carga_t`), `placa`, `nota_fiscal`, `janela_descarga` e, opcionalmente, `motorista_id`. O trajeto é simulado em linha reta, e a rota fica `publicada`.
@@ -214,56 +214,45 @@ As variáveis do doc também valem: `AGORA_REST_KEY` e `AGORA_REST_SECRET` (equi
 5. **CCO:** a Task segue o escalonamento configurado; sem resposta, o agente liga para o recebedor.
 6. **Pedido da central:** `POST /rotas/{id}/solicitacoes {pergunta}`. O agente pergunta ao motorista e a resposta volta estruturada (`GET /rotas/{id}/solicitacoes`).
 7. **Ocorrência por voz:** ao ouvir um problema, o agente persiste a `Ocorrencia` e abre imediatamente um chamado `ocorrencia` ao CCO. Km e BR são opcionais: entram apenas quando o motorista os informar. O chamado fica no banco e no stream, com os mesmos lembretes de 30 s/5 tentativas.
-8. **Ocorrência aprofundada:** depois do registro, o agente faz as perguntas do tipo, **uma por vez**. Em acidente: feridos, envolvimento do caminhão, se dá para seguir e local; em avaria: o que houve, se precisa de socorro e a carga; em fila: quantos caminhões e previsão. Acidente com ferido leva o agente a orientar ligar **192 (SAMU) ou 193 (Bombeiros)** e gera `ocorrencia_grave` (prioridade crítica) para o CCO. O quadro completo sai em `ocorrencia_detalhada` (`OccurrenceDetailed`). Funciona com o LLM (ferramenta `detalhar_ocorrencia`) e na contingência.
-9. **Pergunta sobre a NF ou o CT-e por voz:** a ferramenta `consultar_documento` responde com o nome do documento e os campos disponíveis (número, peso, valor, destinatário, itens, frete, placa ou chave). Se o motorista pedir a lista, informa os títulos; sem campo, diz "não encontrei". A resposta sai só dos campos extraídos e nunca arredonda. O evento é `pergunta_documento`, que aparece como `DocumentQuestionAnswered` no `/events`. Funciona também sem LLM. Anexos reais da rota ficam em `/rotas/{id}/arquivos`.
+8. **Ocorrência aprofundada:** depois do registro, o agente faz as perguntas do tipo, **uma por vez**. Em acidente: feridos, envolvimento do caminhão, se dá para seguir e local; em avaria: o que houve, se precisa de socorro e a carga; em fila: quantos caminhões e previsão. Acidente com ferido leva o agente a orientar ligar **192 (SAMU) ou 193 (Bombeiros)** e gera `ocorrencia_grave` (prioridade crítica) para o CCO. O quadro completo sai em `ocorrencia_detalhada` (`OccurrenceDetailed`). O gateway de texto também inclui uma contingência local para esse fluxo.
+9. **Pergunta sobre a NF ou o CT-e por voz:** a ferramenta `consultar_documento` responde com o nome do documento e os campos disponíveis (número, peso, valor, destinatário, itens, frete, placa ou chave). Se o motorista pedir a lista, informa os títulos; sem campo, diz "não encontrei". A resposta sai só dos campos extraídos e nunca arredonda. O evento é `pergunta_documento`, que aparece como `DocumentQuestionAnswered` no `/events`. O gateway de texto também atende sem `LLM_API_KEY`. Anexos reais da rota ficam em `/rotas/{id}/arquivos`.
 10. **Dupla prova de GPS:** `POST /rotas/{id}/posicao` com `fonte=rastreador` registra o GPS do caminhão. Na retirada e na chegada, se celular e rastreador estiverem a mais de 500 m, o evento fica `nao_validado` e sai `divergencia_gps` para o CCO. O simulador manda os dois GPS (`--divergir` força a divergência).
 
 ## Integração com os fronts
 
-| Quem | Usa SDK da Agora? | Como fala com o backend |
+| Quem | Usa SDK LiveKit? | Como fala com o backend |
 |---|---|---|
-| App do motorista (React Native) | `react-native-agora` (só áudio) | REST + **WebSocket `/ws?rota_id=`** |
-| Painel do CCO (Vite) | não (só para o "ouvir ao vivo", opcional) | REST + **SSE `/cco/stream`** |
-| Recebedor, plano B | Web SDK (página `/recebedor` do backend) | `GET /ligacoes/atual/recebedor` |
-| Recebedor, plano A | nenhum, é um telefone de verdade | — |
+| App do motorista (React Native) | `@livekit/react-native` | token de sala via REST + **WebSocket `/ws?rota_id=`** |
+| Painel do CCO (Vite) | LiveKit opcional para ouvir/falar | REST + **SSE `/cco/stream`** |
+| Recebedor, modo RTC | Web SDK LiveKit (página `/recebedor`) | `GET /ligacoes/atual/recebedor` |
+| Recebedor, modo SIP | telefone via LiveKit SIP | trunk de saída configurado no LiveKit |
 
-**Clientes prontos para copiar** (em `clients/`, com tipos checados por `tsc --strict` contra `react-native-agora` 4.6.4):
+**Clientes de referência** em `clients/`:
 - `clients/tipos.ts`: o contrato em TypeScript (Sessao, TaskCCO, Estadia, Ligacao, EventoStream e as mensagens do stream).
-- `clients/react-native/useAvisaiVoz.ts`: hook do app do motorista. Expõe `iniciar()`, `encerrar()`, `alternarMudo()`, `enviarPosicao()` e o estado vivo (`status`, `estadia`, `task`, `ligacao`, `falas`, `eventos`). Dentro dele já estão o `POST /sessions`, o join com `AUDIO_SCENARIO_AI_CLIENT`, os parâmetros de áudio da Agora (reaplicados quando o áudio troca de saída), o viva-voz, a renovação do token, o `DELETE` e o `/ws` com reconexão.
+- `clients/react-native/useAvisaiVoz.ts`: hook do motorista com `@livekit/react-native`. Expõe `iniciar()`, `encerrar()`, `alternarMudo()`, `enviarPosicao()` e o estado vivo (`status`, `estadia`, `task`, `ligacao`, `falas`, `eventos`). Cuida da sessão, áudio nativo e reconexão do `/ws`.
 - `clients/web/avisaiStream.ts`: cliente SSE tipado, sem framework, com reconexão e as ações REST do CCO. `clients/web/useAvisaiCCO.ts` é um hook React por cima dele.
 
-O front **nunca** chama a REST da Agora: App Certificate e Customer Secret ficam só aqui. O front recebe tokens de 24 h e renova por `GET /token`.
+Os clientes recebem tokens LiveKit de curta duração gerados pelo backend. As chaves do servidor e do worker ficam somente no `.env`.
 
 ### App do motorista (React Native)
-- Precisa de dev build ou `expo prebuild`, porque `react-native-agora` tem módulo nativo e não roda no Expo Go.
-- Boas práticas da Agora para agentes de voz (`/en/ai/best-practices/audio-setup`):
-  - SDK ≥ 4.5.1 com `AUDIO_SCENARIO_AI_CLIENT` na inicialização;
-  - os `setParameters` de áudio da página audio-setup antes do join e a cada `onAudioRouteChanged` (Bluetooth ↔ viva-voz);
-  - as extensões de IA de supressão de ruído e de cancelamento de eco;
-  - viva-voz ligado, sem vídeo.
+- Precisa de dev build ou `expo prebuild`, porque o SDK LiveKit usa módulos nativos e não roda no Expo Go. Registre `registerGlobals()` na inicialização do app, configure `AudioSession` e as permissões de microfone para iOS/Android.
 
 ```ts
+import { Room, RoomEvent } from "livekit-client";
+
 const s = await fetch(`${API}/sessions`, { method: "POST", headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ rota_id: 1 }) }).then(r => r.json());
-// s = { id, canal, user_uid, agent_uid, agent_id, app_id, token, status }
-const engine = createAgoraRtcEngine();
-engine.initialize({ appId: s.app_id /* + audioScenario: AI client, ver doc */ });
-engine.registerEventHandler({
-  onUserJoined: (_c, uid) => uid === s.agent_uid && setPronto(true),       // agente entrou
-  onTokenPrivilegeWillExpire: async () => engine.renewToken(
-    (await fetch(`${API}/token?channel=${s.canal}&uid=${s.user_uid}`).then(r => r.json())).token),
-});
-engine.setEnableSpeakerphone(true);
-engine.joinChannel(s.token, s.canal, s.user_uid, {
-  clientRoleType: ClientRoleType.ClientRoleBroadcaster,
-  publishMicrophoneTrack: true, autoSubscribeAudio: true, publishCameraTrack: false,
-});
+// s = { id, canal, identity, livekit_url, token, status }
+const room = new Room();
+await room.connect(s.livekit_url, s.token);
+await room.localParticipant.setMicrophoneEnabled(true);
+room.on(RoomEvent.ParticipantConnected, p => p.identity === `rodar-agente-${s.id}` && setPronto(true));
 const ws = new WebSocket(`${API.replace("http", "ws")}/ws?rota_id=1`);
 ws.onmessage = (m) => { const { canal, dado } = JSON.parse(m.data); /* snapshot | evento | task | fala | contador */ };
-// encerrar: engine.leaveChannel(); fetch(`${API}/sessions/${s.id}`, { method: "DELETE" })
+// encerrar: room.disconnect(); fetch(`${API}/sessions/${s.id}`, { method: "DELETE" })
 ```
 
-O `POST /sessions` voltar 200 não quer dizer que o agente já está no canal. Espere `onUserJoined` do uid 9001. A fala proativa ("o recebimento disse doca 4") chega sozinha: o backend chama o `/speak` da Agora.
+O `POST /sessions` despacha o agente e devolve token para conectar à sala. Aguarde o participante `rodar-agente-{id}` para mostrar a conversa como pronta. Fala proativa e comandos do CCO chegam ao worker por mensagens LiveKit na sala.
 
 ### Painel do CCO (Vite)
 ```ts
@@ -276,14 +265,14 @@ es.addEventListener("contador", e => setEstadias(JSON.parse(e.data).estadias));
 ```
 Tipos TypeScript: `npx openapi-typescript {API}/openapi.json -o src/api.ts`.
 
-### Canais e UIDs (fixos)
-| | canal | uid |
+### Salas e identidades LiveKit
+| Participante | Sala | Identidade |
 |---|---|---|
-| Motorista | `avisai-rota-{rota_id}` | 1001 |
-| Agente do motorista | `avisai-rota-{rota_id}` | 9001 |
-| CCO, ouvindo (opcional) | o canal que for ouvir | 2001 |
-| Recebedor (página ou gateway SIP) | `avisai-recebedor-{ligacao_id}` | 3001 |
-| Agente que liga ao recebedor | `avisai-recebedor-{ligacao_id}` | 9002 |
+| Motorista | `rodar-rota-{rota_id}` | `motorista-{rota_id}` |
+| Agente do motorista | `rodar-rota-{rota_id}` | `rodar-agente-{sessao_id}` |
+| CCO, monitor opcional | sala ativa da sessão | `cco-monitor-{sessao_id}` |
+| Recebedor, página web | `rodar-recebedor-{ligacao_id}` | `recebedor-{ligacao_id}` |
+| Recebedor, chamada telefônica | `rodar-recebedor-{ligacao_id}` | `sip-recebedor-{ligacao_id}` |
 
 ---
 
@@ -295,20 +284,20 @@ Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi
 
 | Método | Caminho | Corpo | O que faz |
 |---|---|---|---|
-| GET | `/health` | — | estado da configuração, túnel, Agora, Twilio e LLM |
+| GET | `/health` | — | estado da configuração LiveKit, túnel, Twilio e LLM |
 | GET | `/usuarios?role=driver\|cco`<br>`/api/users` | — | perfis persistidos de demonstração |
 | POST | `/auth/sso` | `{email}` | login MOCK (sem senha); devolve perfil e JWT assinado, exigido nas escritas |
-| GET | `/token?channel=&uid=` | — | token RTC+RTM de 24 h |
+| GET | `/token?room=&identity=` | — | token LiveKit de curta duração para uma identidade ativa autorizada |
 | POST | `/sessions` | `{rota_id}` | inicia o agente da viagem e devolve o token do motorista |
 | GET / DELETE / POST | `/sessions`<br>`/sessions/{id}`<br>`/sessions/{id}/speak` | — / — / `{texto, prioridade?}` | lista, encerra ou pede uma fala manual para teste |
-| POST | `/v1/chat/completions` | OpenAI compatível | gateway interno do LLM chamado pela Agora; não é endpoint de frontend |
+| POST | `/v1/chat/completions` | OpenAI compatível | gateway interno do LLM usado pelo worker LiveKit; não é endpoint de frontend |
 
 ### Rotas, motoristas, arquivos e comunicação
 
 | Método | Caminho | Corpo | O que faz |
 |---|---|---|---|
 | GET / POST | `/rotas` | — / `NovaRota` | lista ou publica rota; `motorista_id` é opcional por compatibilidade, embora o painel CCO exija um motorista cadastrado |
-| GET | `/rotas/{id}` | — | detalhe, trajetória, posições, canal e UIDs |
+| GET | `/rotas/{id}` | — | detalhe, trajetória e posições |
 | POST | `/rotas/{id}/atribuir` | `{motorista_id}` | atribui/reatribui e emite `rota_atribuida` |
 | POST | `/rotas/{id}/posicao` | GPS do celular ou rastreador | atualiza posição, geocerca e status |
 | POST | `/rotas/{id}/chegada`<br>`/descarga`<br>`/reset` | — / `{por?}` / — | registra chegada, encerra descarga ou reinicia a rota de demonstração |
@@ -326,7 +315,7 @@ Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi
 |---|---|---|---|
 | GET | `/cco/estado?rota_id=` | — | snapshot de rotas, Tasks, estadias, chamadas, ocorrências, chamados e eventos |
 | GET / POST | `/cco/chamados`<br>`/cco/chamados/{id}/responder` | — / `{resposta, respondido_por?}` | lista e responde chamados persistidos; resposta é enviada ao agente |
-| GET / POST | `/cco/chamadas-agente`<br>`/cco/rotas/{id}/ligar` | — / `{motivo?}` | acompanha ou inicia a cascata Twilio → Agora para operador |
+| GET / POST | `/cco/chamadas-agente`<br>`/cco/rotas/{id}/ligar` | — / `{motivo?}` | acompanha ou inicia a cascata Twilio → LiveKit RTC para operador |
 | GET | `/cco/stream?rota_id=` | — | SSE: `snapshot`, `evento`, `task`, `posicao`, `fala`, `contador`, `reset`, `chamado` e alertas |
 | WS | `/ws?rota_id=` ou `?motorista_id=` | — | atualizações da rota e novas atribuições ao motorista |
 | GET / POST | `/tasks`<br>`/tasks/{id}/confirmar` | — / `{confirmado_por}` | lista Tasks e registra que o CCO assumiu |
@@ -360,7 +349,7 @@ Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi
 | `aviso_motorista` | `{id, rota_id, texto, prioridade, pede_resposta}`: o agente quis falar com o motorista sem conversa aberta; o app fala em voz local e, se for pergunta, abre a conversa |
 
 ### Comandos do app por voz (`acao_cliente`)
-O motorista pede ("abre o mapa", "mostra a nota fiscal", "volta", "tchau, AvisAI", "sair da conta") e o agente chama a ferramenta `comandar_app`. O backend publica só a intenção no `/ws`; o app nunca age a partir da transcrição. Sem LLM, a contingência reconhece os mesmos pedidos (`dominio/comandos_app.py`).
+O motorista pede ("abre o mapa", "mostra a nota fiscal", "volta", "tchau, AvisAI", "sair da conta") e o agente chama a ferramenta `comandar_app`. O backend publica só a intenção no `/ws`; o app nunca age a partir da transcrição. O gateway de texto também reconhece esses pedidos sem `LLM_API_KEY` (`dominio/comandos_app.py`).
 
 | `acao` | Campos | O app faz |
 |---|---|---|
@@ -388,40 +377,31 @@ Valores de `EventoStream.tipo` (enum `TipoEvento`):
 
 ## Variáveis do `.env`
 
-Obrigatórias: `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`. Recomendadas: `LLM_API_KEY` (OpenAI) e `LLM_SHARED_SECRET`.
+Obrigatórias para voz: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`. O worker usa o modelo de fala em tempo real configurado em `LIVEKIT_MODEL` e a voz em `LIVEKIT_VOICE`; o áudio não passa pelo pipeline separado de STT/TTS. `LLM_API_KEY` é usado pelos endpoints de conversa e pelos scripts de avaliação, não pelo diálogo de voz LiveKit.
 
 | Variável | Padrão | Para quê |
 |---|---|---|
-| `AGORA_CUSTOMER_ID` / `AGORA_CUSTOMER_SECRET` | vazio | Basic auth na REST; vazio usa auth por token |
-| `LLM_MODE` | `custom` | Define sessões não auditáveis. As sessões de **motorista** e **operador** sempre usam o gateway `custom`, pois alertas, decisões e tool calls precisam chegar ao backend/SSE da CCO. |
-| `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | `gpt-4o-mini` | upstream do nosso LLM (qualquer API compatível com OpenAI); sem chave, usa a contingência |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | — | conexão com LiveKit Cloud ou servidor compatível |
+| `LIVEKIT_AGENT_NAME` | `rodar-voice-agent` | nome usado no dispatch explícito do agente |
+| `LIVEKIT_LLM_URL` | `http://api:8000/v1` no Compose | gateway interno do backend para estado, transcrições e chamadas de ferramentas |
+| `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | `gpt-4o-mini` | upstream OpenAI compatível para `/v1/chat/completions` e avaliação de diálogos |
 | `PUBLIC_URL` | descoberta automática | URL do túnel |
 | `RECEBEDOR_MODO` | `rtc` | `rtc` (plano B) ou `sip` (plano A) |
-| `AGORA_SIP_FROM_NUMBER`, `RECEBEDOR_TELEFONE_E164` | — | plano A |
-| `ASR_LANGUAGE` | `pt-BR` | idioma do ASR |
-| `ASR_VENDOR` | `ares` | `ares` (ASR da Agora, gerenciado, com palavras-chave; padrão), `deepgram` (gerenciado) ou `openai` (chave própria) |
-| `ASR_MODEL` | vazio | Deepgram: `nova-2` ou `nova-3`; OpenAI: `gpt-4o-mini-transcribe` ou `gpt-4o-transcribe` |
-| `ASR_API_KEY` | vazio | só para `openai`; vazio usa `LLM_API_KEY` se o LLM for a OpenAI |
-| `TTS_VOICE_ID`, `TTS_VOICE_ID_RECEBEDOR` | vozes PT da MiniMax | vozes dos dois agentes |
-| `TTS_SAMPLE_RATE`, `TTS_LANGUAGE_BOOST`, `TTS_SPEED` | `24000`, `Portuguese`, `1.0` | MiniMax `speech-2.8-turbo`: a taxa de amostragem é obrigatória na doc da Agora; `language_boost` fixa o português |
-| `AGORA_SAL` | `false` | Selective Attention Locking (Beta) no agente do motorista |
+| `LIVEKIT_SIP_TRUNK_ID`, `LIVEKIT_SIP_FROM_NUMBER`, `RECEBEDOR_TELEFONE_E164` | — | trunk e números do plano SIP |
+| `LIVEKIT_MODEL` | `google/gemini-3.8-live` | modelo realtime speech-to-speech do LiveKit Inference |
+| `LIVEKIT_VOICE` | `Charon` | voz nativa do Gemini Live |
 | `CCO_INTERVALO_S`, `CCO_MAX_TENTATIVAS` | `20`, `3` | ritmo do escalonamento (a regra da empresa no seed define 3) |
 | `ESTADIA_ACELERACAO` | `1` | relógio da estadia; use `600` na demo |
 | `LIGAR_RECEBEDOR_NA_APROXIMACAO` | `true` | liga para o recebedor já na aproximação (fluxo do repo de ideias) |
 | `LIGACAO_TIMEOUT_S` | `180` | sem resposta até aqui, a ligação é registrada como não atendida |
 
-### Melhorar o reconhecimento de fala (ASR)
-Se a transcrição vier ruim, troque só o ASR no `.env`. Ferramentas e fala proativa continuam iguais.
-1. **`ASR_VENDOR=ares`** (padrão, grátis, ASR da Agora): suporta pt-BR e recebe **palavras-chave** do domínio (doca, portaria, CT-e, palete, estadia…) mais o destino, o recebedor e a placa da rota. É a melhor opção grátis para os termos da operação.
-2. **`ASR_VENDOR=deepgram`** (grátis, gerenciado): `ASR_MODEL=nova-3` ou `nova-2`, sem palavras-chave.
-3. **`ASR_VENDOR=openai`** (pago): `gpt-4o-mini-transcribe` com um prompt de contexto em PT-BR e os mesmos termos. É a melhor qualidade.
-
-Depois de editar o `.env`, rode `docker compose up -d --force-recreate api` e abra uma sessão nova. O ARES e o Deepgram nova-2 foram aceitos pela Agora (`/join` 200); a qualidade se compara falando, de preferência com fone de ouvido.
+### Voz realtime
+O padrão usa `google/gemini-3.8-live` com a voz `Charon`. O Gemini processa áudio e gera fala nativamente; o worker mantém os schemas de ferramentas do backend e registra transcrições e eventos no gateway RODAR. Altere `LIVEKIT_MODEL` ou `LIVEKIT_VOICE` conforme a disponibilidade da conta LiveKit Inference. Recrie `voice-agent` e inicie uma sessão nova após mudar esses valores. Como o modelo gera fala nativamente, ele pode parafrasear saudações e avisos proativos mesmo quando recebe instrução para repeti-los literalmente.
 
 ### Avaliar a conversa do agente
-`make avaliar` roda conversas difíceis (início com respostas soltas, ruído e conversa ao lado, ocorrência com desvio, resposta curta à central, pedidos vagos) contra a api e o LLM de verdade, sem Agora, e mostra turno a turno o que o agente respondeu e o que registrou, com checagens OK/FALHOU (`scripts/avaliar_conversas.py`). Reinicia a rota usada (padrão: rota 1; `ARGS="--rota 2 --cenario ruido"`).
+`make avaliar` roda conversas difíceis (início com respostas soltas, ruído e conversa ao lado, ocorrência com desvio, resposta curta à central, pedidos vagos) contra a API e o LLM, sem transporte de áudio, e mostra turno a turno o que o gateway respondeu e registrou (`scripts/avaliar_conversas.py`). Reinicia a rota usada (padrão: rota 1; `ARGS="--rota 2 --cenario ruido"`).
 
-Sem LLM (ou com a chave recusada), quem responde é a contingência: ela entende as falas mais comuns, lembra o que o agente acabou de perguntar (o "sim"/"não" vale para isso), confirma respostas curtas antes de mandar à central e, quando não entende, volta para a pendência em aberto. Com LLM, o estado vivo traz a **SITUAÇÃO** da viagem e o **PRÓXIMO PASSO**, sem as falas repetidas.
+O gateway de texto e `make avaliar` usam a contingência local quando `LLM_API_KEY` está vazia ou o upstream falha. A conversa por voz usa Gemini Live no LiveKit Inference; ela não depende dessa chave.
 
 Travas contra o LLM se perder (valem para qualquer modelo):
 - relatório inicial e check-in só gravam campos que saíram das últimas falas do motorista (`dominio/fundamentacao.py`); o resto volta como pergunta;
@@ -435,37 +415,17 @@ Qualquer API compatível com OpenAI e com suporte a ferramentas serve. Duas opç
 
 Depois de editar o `.env`, rode `docker compose up -d --force-recreate api`.
 
-**Sem chave nenhuma, a demo funciona pela contingência** (`dominio/contingencia.py`), que entende:
+**Sem `LLM_API_KEY`, os endpoints de texto e a avaliação funcionam pela contingência** (`dominio/contingencia.py`), que entende:
 - **motorista:** início da rota por voz ("quero iniciar a viagem"), chegada ("cheguei", "tô na portaria"), ocorrências (fila, doca ocupada, documento, avaria, recusa, atraso, acidente), descarga ("descarreguei") e perguntas sobre documentos, tempo parado, estadia, doca e CCO, respondidas com o estado real da rota;
 - **recebedor:** extrai a doca e a previsão ("a doca 4 libera em 40 minutos", "às 15h", "só amanhã").
 
-### Ativar a ligação telefônica real (plano A)
-**Twilio (Elastic SIP Trunk), automatizado:**
-1. Compre um número na Twilio. Um número dos EUA (+1) sai na hora; um brasileiro exige cadastro regulatório.
-2. No `.env`, coloque `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_NUMERO=+1…` e `TWILIO_TRUNK_DOMINIO=avisai-<time>`. O backend não usa essas credenciais; só o script de setup.
-3. Rode `make twilio`. O script cria o trunk com a Termination URI `<dominio>.pstn.twilio.com`, cria a IP ACL com os IPs SIP de saída da Agora (+1 e +55), vincula a ACL ao trunk, associa o número e imprime o que cadastrar na Agora.
-4. Na Twilio, habilite o Brasil nas permissões geográficas de voz (Geo Permissions). Conta trial só liga para números verificados.
+### Ativar ligação telefônica por LiveKit SIP
+1. Configure um outbound SIP trunk no LiveKit com seu provedor (por exemplo, Twilio Elastic SIP Trunking) e associe o número de origem.
+2. No `.env`, preencha `LIVEKIT_SIP_TRUNK_ID`, `LIVEKIT_SIP_FROM_NUMBER`, `RECEBEDOR_TELEFONE_E164` e defina `RECEBEDOR_MODO=sip`.
+3. Confirme que o provedor aceita chamadas do serviço SIP LiveKit e que o país de destino está habilitado na conta.
+4. Suba novamente `voice-agent` e `api`. O backend cria um participante SIP de saída para a sala do agente. Se a chamada SIP falhar na criação, registra `fallback_plano_b` e deixa o recebedor entrar por RTC no navegador.
 
-**Agora:**
-1. No console da Agora, em *Phone Numbers → Add Phone Number*, cadastre o número com vendor *SIP Trunk*, o endereço e o protocolo que o script imprimiu.
-2. No `.env`: `RECEBEDOR_MODO=sip`, `AGORA_SIP_FROM_NUMBER=+55…` e `RECEBEDOR_TELEFONE_E164=+55…` (o telefone de quem atende).
-3. `make up` de novo. O agente passa a ligar com `POST /call` e acompanha o estado por `GET /calls/{id}`.
-
-Se o `/call` falhar, a ligação **cai sozinha no plano B** e o evento `fallback_plano_b` fica registrado.
-
----
-
-## Boas práticas da Agora aplicadas
-Fonte: docs da Agora, via o MCP `mcp.agora.io` e o OpenAPI v2.
-- Áudio do servidor nos padrões da Agora (sem overrides de VAD); interrupção (barge-in) explícita.
-- Latência:
-  - `gpt-4o-mini` com `max_tokens` 150;
-  - streaming real dos chunks da OpenAI até a Agora;
-  - **filler words** ("Peraí, deixa eu registrar") quando a resposta passa de 1,5 s, cobrindo as ferramentas.
-- Nome de agente único por sessão (evita 409); `leave` explícito, porque o limite é de 20 agentes simultâneos por App ID; `idle_timeout` como rede de segurança.
-- `/speak` com `INTERRUPT` só para o que muda a ação do motorista (a resposta do recebedor); o resto vai em `APPEND`.
-- Fora do escopo: a Platform API (Preview, só EUA). A telefonia (`/call`) está em Beta.
-- **SDK Python:** o `agora-agents` 2.15 força `turn_detection.language` e `asr.language` como `en-US`, e não aceita `pt-BR`. Por isso o `/join` vai por REST direto (payload do OpenAPI) com `pt-BR`. Do SDK, usamos só o gerador oficial de AccessToken2 (o pacote `agora-token` é só npm).
+Chamadas manuais para operador mantêm a cascata Twilio PSTN → sala LiveKit RTC. O fallback aguarda atendimento e escala ao supervisor quando o operador não entra.
 
 ---
 
@@ -473,16 +433,10 @@ Fonte: docs da Agora, via o MCP `mcp.agora.io` e o OpenAPI v2.
 - **Rastreador do caminhão simulado:** o simulador manda um segundo GPS (`fonte=rastreador`) com ruído de cerca de 10 m, que serve de dupla prova. Integração real com Sascar, Omnilink etc. fica fora.
 - **Documentos, SSO e métricas:** `/api/documents` devolve NF-e e CT-e fictícios; `/auth/sso` não pede senha (o token é real, o login é simulado); a latência em `/api/metrics` mede só o nosso LLM até o primeiro trecho (não inclui ASR, TTS e rede).
 - **GPS simulado:** `scripts/simular_rota.py` move o caminhão por um trajeto reto de Jundiaí a Campinas, chamando `POST /rotas/{id}/posicao`. Em produção, a posição viria do GPS do celular do motorista pelo mesmo endpoint.
-- **Ligação ao recebedor (plano B):** na demo, o recebedor atende por uma página web (`/recebedor`) num canal Agora RTC, não por telefone. A ligação telefônica real (plano A, `POST /call`) está implementada e testada com mock, mas desligada: o time não tem número importado na Agora.
+- **Ligação ao recebedor:** o padrão `RECEBEDOR_MODO=rtc` usa uma página web (`/recebedor`) ligada à sala LiveKit; `sip` usa o trunk de saída configurado no LiveKit.
 - **Seed fictício:** a transportadora, o motorista, a placa, a NF, o recebedor e os telefones são inventados (`backend/app/seed.py`).
 - **Estadia acelerada:** com `ESTADIA_ACELERACAO=600`, 1 s real conta 10 min, para mostrar a franquia de 5 h e o valor em minutos de demo. Sem a variável, o relógio é real. Os intervalos com o CCO também são curtos (20 s).
 - **CCO:** chamados de chegada e ocorrência são persistidos no banco local, aparecem no painel e podem ser respondidos por botão. O canal de voz do agente entrega a resposta ao motorista; push/telefonia reais para a central continuam fora do escopo.
-- **Pré-existente / terceiros:**
-  - Agora Conversational AI, com o ASR da Agora (ARES, com palavras-chave; Deepgram nova-3 como alternativa) e preset gerenciado MiniMax (TTS);
-  - OpenAI (LLM);
-  - SDK `agora-agents` (só os tokens);
-  - Web SDK da Agora nas páginas de teste;
-  - cloudflared (túnel).
-  O formato do `/join` seguiu o quickstart oficial `agent-quickstart-python` e o OpenAPI da Agora.
+- **Serviços externos:** LiveKit Cloud (RTC, Agents, Inference e SIP conforme plano), endpoint de LLM compatível com OpenAI, Twilio opcional para a primeira tentativa de ligação ao operador e cloudflared para clientes remotos.
 - **Contingência:** sem `LLM_API_KEY`, ou com a OpenAI fora do ar, o nosso LLM responde por palavras-chave (cheguei, fila, descarreguei, doca...) para a demo não travar.
 - **LGPD:** não guardamos áudio, só a transcrição. Não há gravação na nuvem nem dado de saúde.

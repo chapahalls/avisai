@@ -12,7 +12,7 @@ from ..dominio.enums import StatusRota, TipoEvento, TipoGeo
 from ..infra.db import sessao
 from ..infra.models import EventoGeo, Rota
 from . import consultas, ligacoes, tasks
-from .sessoes import VozAgora
+from .sessoes import VozLiveKit
 
 
 def _ja_teve(s, rota_id: int, tipo: str) -> bool:
@@ -106,14 +106,14 @@ async def registrar_posicao(c, rota_id: int, lat: float, lng: float, velocidade_
 
 async def on_origem(c, r: Rota) -> None:
     c.eventos.registrar(TipoEvento.RETIRADA_DETECTADA, f"Caminhão {r.placa} na origem ({r.origem_nome}). Aguardando confirmação da retirada.", r.id)
-    await VozAgora(c).falar_motorista(r.id, f"Você tá em {r.origem_nome}. Confirma a retirada da carga?")
+    await VozLiveKit(c).falar_motorista(r.id, f"Você tá em {r.origem_nome}. Confirma a retirada da carga?")
 
 
 async def on_aproximacao(c, r: Rota) -> None:
     eta = int(r.eta_min or 0)
     c.eventos.registrar(TipoEvento.APROXIMACAO, f"Caminhão {r.placa} a {eta} min de {r.destino_nome}. CCO avisado.",
                         r.id, eta_min=r.eta_min, distancia_m=r.distancia_m)
-    voz = VozAgora(c)
+    voz = VozLiveKit(c)
     if c.settings.ligar_recebedor_na_aproximacao:
         await voz.falar_motorista(r.id, f"Faltam uns {eta} minutos. Já avisei o CCO e tô ligando pro recebimento pra confirmar a doca.")
         c.em_segundo_plano(f"lig-aprox-{r.id}", ligacoes.ligar(c, r.id, motivo="aproximacao"))

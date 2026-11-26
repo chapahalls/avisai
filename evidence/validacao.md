@@ -41,3 +41,6 @@ Api `http://localhost:8000` · LLM upstream: não (contingência) · recebedor: 
 | 10. Celular × rastreador divergentes: evento não validado e alerta ao CCO | ✅ |  |
 
 Falas simuladas pelo mesmo endpoint que a Agora chama; /join, /speak e /leave reais na Agora. Não substitui o teste com pessoas falando (qualidade do ASR, latência, barge-in).
+# Registro histórico
+
+Este resultado foi produzido antes da migração da voz da Agora para LiveKit e não valida o worker, o RTC nem o SIP do LiveKit.

@@ -23,7 +23,7 @@ from ..infra.db import sessao
 from ..infra.eventos import envelope
 from ..infra.models import Evento, SessaoAgente
 from . import consultas, conversa
-from .sessoes import UID_AGENTE_MOTORISTA, UID_MOTORISTA, VozAgora
+from .sessoes import VozLiveKit
 
 log = logging.getLogger("avisai.falas_offline")
 
@@ -158,12 +158,12 @@ async def _processar(c, ev: Evento) -> None:
     ]
     with sessao() as s:
         sa = SessaoAgente(rota_id=ev.rota_id, papel=Papel.MOTORISTA, canal=f"offline-{ev.rota_id}",
-                          agent_uid=UID_AGENTE_MOTORISTA, user_uid=UID_MOTORISTA, status="encerrada",
-                          llm_mode="custom", criada_em=c.relogio.agora(), erro="fala gravada sem sinal")
+                          status="encerrada", llm_mode="custom", criada_em=c.relogio.agora(),
+                          erro="fala gravada sem sinal")
         s.add(sa)
         s.commit()
         s.refresh(sa)
     resposta = "".join([parte async for parte in conversa.responder(c, sa, msgs)]).strip()
     _atualizar(ev.id, status="processada", resposta=resposta, sessao_id=sa.id)
     if resposta:
-        await VozAgora(c).falar_motorista(ev.rota_id, f"Sobre o que você falou às {hora}: {resposta}")
+        await VozLiveKit(c).falar_motorista(ev.rota_id, f"Sobre o que você falou às {hora}: {resposta}")

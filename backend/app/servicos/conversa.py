@@ -19,7 +19,7 @@ RUIDO_ESTADO = (str(TipoEvento.FALA_MOTORISTA), str(TipoEvento.FALA_AGENTE), str
 
 
 def limpar(msgs: list[dict]) -> list[dict]:
-    """Tira os campos extras (turn_id, timestamp) que a Agora inclui com vendor=custom."""
+    """Mantém somente os campos suportados pelo contrato OpenAI Chat Completions."""
     out = []
     for m in msgs:
         n = {k: m[k] for k in ("role", "content", "tool_calls", "tool_call_id", "name") if m.get(k) is not None}
@@ -115,6 +115,29 @@ def _transcrever(sa: SessaoAgente, quem: str, texto: str) -> None:
         s.commit()
 
 
+def registrar_turno(c, sa: SessaoAgente, papel: str, texto: str) -> None:
+    """Registra falas do modelo realtime com os mesmos eventos do gateway de conversa."""
+    texto = texto.strip()
+    if not texto:
+        return
+    if papel == "user":
+        if sa.papel == Papel.RECEBEDOR:
+            c.eventos.registrar(TipoEvento.FALA_RECEBEDOR, texto, sa.rota_id, sessao_id=sa.id)
+        elif sa.papel == Papel.MOTORISTA:
+            c.eventos.registrar(TipoEvento.FALA_MOTORISTA, texto, sa.rota_id, sessao_id=sa.id, _fonte="driver")
+            alertas.registrar(c, sa.rota_id, texto)
+        else:
+            c.eventos.registrar(TipoEvento.FALA_AGENTE, texto, sa.rota_id, sessao_id=sa.id, _fonte="cco")
+        _transcrever(sa, "recebedor", texto)
+    elif papel == "assistant":
+        _transcrever(sa, "agente", texto)
+        c.eventos.publicar("fala", {"rota_id": sa.rota_id, "papel": sa.papel, "texto": texto}, sa.rota_id)
+
+
+async def executar_ferramenta(c, sa: SessaoAgente, nome: str, args: dict, fala: str) -> dict:
+    return await _executar(c, sa, nome, args, fala)
+
+
 def estado_contingencia(c, sa: SessaoAgente) -> contingencia.Estado:
     from ..dominio.estadia import falar_horas
     from . import tasks as tasks_srv
@@ -181,15 +204,7 @@ async def _executar(c, sa: SessaoAgente, nome: str, args: dict, fala: str) -> di
 async def responder(c, sa: SessaoAgente, msgs_in: list[dict]) -> AsyncIterator[str]:
     """Gera o texto da resposta em pedaços (para o SSE começar antes do fim)."""
     fala = ultima_fala(msgs_in)
-    if fala:
-        if sa.papel == Papel.RECEBEDOR:
-            c.eventos.registrar(TipoEvento.FALA_RECEBEDOR, fala, sa.rota_id, sessao_id=sa.id)
-        elif sa.papel == Papel.MOTORISTA:
-            c.eventos.registrar(TipoEvento.FALA_MOTORISTA, fala, sa.rota_id, sessao_id=sa.id, _fonte="driver")
-            alertas.registrar(c, sa.rota_id, fala)
-        else:
-            c.eventos.registrar(TipoEvento.FALA_AGENTE, fala, sa.rota_id, sessao_id=sa.id, _fonte="cco")
-        _transcrever(sa, "recebedor", fala)
+    registrar_turno(c, sa, "user", fala)
 
     dito: list[str] = []
 
@@ -240,8 +255,7 @@ async def responder(c, sa: SessaoAgente, msgs_in: list[dict]) -> AsyncIterator[s
             yield "Certo."
 
     texto = "".join(dito).strip()
-    _transcrever(sa, "agente", texto)
-    c.eventos.publicar("fala", {"rota_id": sa.rota_id, "papel": sa.papel, "texto": texto}, sa.rota_id)
+    registrar_turno(c, sa, "assistant", texto)
 
 
 def sessao_da_requisicao(sid: Optional[str]) -> Optional[SessaoAgente]:

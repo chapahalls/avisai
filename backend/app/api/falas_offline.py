@@ -6,12 +6,13 @@ from fastapi.responses import JSONResponse
 
 from ..infra.eventos import serial
 from ..servicos import falas_offline
-from .deps import c, erro_http
+from .deps import c, erro_http, exigir_acesso_rota
 
 router = APIRouter(tags=["falas-offline"])
 
 
-@router.post("/rotas/{rota_id}/falas-offline", status_code=201)
+@router.post("/rotas/{rota_id}/falas-offline", status_code=201,
+             dependencies=[Depends(exigir_acesso_rota)])
 async def receber(rota_id: int, audio: UploadFile = File(...), idempotencyKey: str = Form(...),
                   faladoEm: Optional[str] = Form(None), duracaoMs: Optional[int] = Form(None, ge=0),
                   ct=Depends(c)):

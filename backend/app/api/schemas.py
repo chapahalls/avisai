@@ -6,9 +6,9 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class TokenOut(BaseModel):
-    app_id: str
-    channel: str
-    uid: int
+    url: str
+    room: str
+    identity: str
     token: str
 
 
@@ -21,15 +21,14 @@ class SessaoOut(BaseModel):
     rota_id: int
     papel: str
     canal: str
-    agent_uid: int
-    user_uid: int
     agent_id: Optional[str]
     status: str
     llm_mode: str
     criada_em: datetime
     encerrada_em: Optional[datetime] = None
     erro: Optional[str] = None
-    app_id: Optional[str] = None
+    livekit_url: Optional[str] = None
+    identity: Optional[str] = None
     token: Optional[str] = None
 
 

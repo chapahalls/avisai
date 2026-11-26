@@ -1,4 +1,4 @@
-"""Peça 3: endpoint OpenAI-compatível chamado pela nuvem da Agora (via túnel)."""
+"""Gateway de texto e ferramentas usado pelo worker Gemini Live do LiveKit."""
 import hmac
 import json
 import time
@@ -47,3 +47,46 @@ async def chat_completions(request: Request, ct=Depends(c)):
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(gerar(), media_type="text/event-stream")
+
+
+def _sessao_voice(request: Request, ct):
+    segredo = ct.settings.llm_shared_secret
+    recebido = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    if segredo and not hmac.compare_digest(recebido.encode(), segredo.encode()):
+        raise HTTPException(401, "segredo inválido")
+    sa = conversa.sessao_da_requisicao(request.headers.get("x-avisai-sessao"))
+    if not sa or sa.status != "ativa":
+        raise HTTPException(404, "nenhuma sessão de agente ativa")
+    return sa
+
+
+@router.post("/v1/voice/turn")
+async def voice_turn(request: Request, ct=Depends(c)):
+    """Persiste as transcrições do Gemini Live no mesmo fluxo de eventos do RODAR."""
+    sa = _sessao_voice(request, ct)
+    body = await request.json()
+    papel = body.get("role")
+    texto = str(body.get("text") or "")[:12000]
+    if papel not in ("user", "assistant"):
+        raise HTTPException(422, "role deve ser user ou assistant")
+    conversa.registrar_turno(ct, sa, papel, texto)
+    return {"state": conversa.estado(ct, sa.rota_id)}
+
+
+@router.get("/v1/voice/context")
+async def voice_context(request: Request, ct=Depends(c)):
+    sa = _sessao_voice(request, ct)
+    return {"state": conversa.estado(ct, sa.rota_id)}
+
+
+@router.post("/v1/voice/tool")
+async def voice_tool(request: Request, ct=Depends(c)):
+    """Executa no backend a ferramenta chamada pelo modelo Gemini realtime."""
+    sa = _sessao_voice(request, ct)
+    body = await request.json()
+    nome = str(body.get("name") or "")
+    args = body.get("arguments") or {}
+    if not isinstance(args, dict):
+        raise HTTPException(422, "arguments deve ser um objeto")
+    fala = str(body.get("utterance") or "")[:12000]
+    return await conversa.executar_ferramenta(ct, sa, nome, args, fala)
