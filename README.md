@@ -20,7 +20,7 @@ Licença: [MIT](LICENSE). As tags `v1.0-entrega` a `v1.3-entrega` marcam as vers
 | [rodarglobal/rodar-backend](https://github.com/rodarglobal/rodar-backend) | este backend: API, agente de voz (Agora ConvoAI), regras, infra Docker | Lucas |
 | [rodarglobal/rodar-mobile](https://github.com/rodarglobal/rodar-mobile) | app do motorista (React Native / Expo): voz pela Agora, mapa, sincronização com o backend | Jeferson |
 | [rodarglobal/rodar-web](https://github.com/rodarglobal/rodar-web) | painel do CCO (React + Vite): frota, Tasks, ligações, indicadores, publicação de rotas | Henry |
-| [chapahalls/chapahalls-ideas](https://github.com/chapahalls/chapahalls-ideas) | pesquisa, decisões de produto e plano de arquitetura | time |
+| [rodarglobal/rodar-ideas](https://github.com/rodarglobal/rodar-ideas) | pesquisa do problema com fontes, decisões de produto (ADRs) e plano (não entra na submissão) | time |
 
 Toda a voz roda na **Agora Conversational AI**. O áudio vai do aparelho direto para a nuvem da Agora; este backend é o plano de controle: tokens, `/join`, `/leave`, `/speak` e `/call`, o LLM próprio com ferramentas e as regras de negócio.
 
@@ -30,12 +30,22 @@ Toda a voz roda na **Agora Conversational AI**. O áudio vai do aparelho direto 
 |---|---|
 | **Trilha** | Logística & automação |
 | **Em uma frase** | Um agente de voz que avisa o recebedor antes da chegada, conta a estadia do caminhão parado (Lei 11.442) e só chama a central quando alguém precisa decidir. |
-| **Ver sem instalar nada** | [tour em vídeo de 1 min](https://github.com/rodarglobal/rodar-web/blob/main/docs/assets/readme/tour.mp4) do site e do painel · [validação ponta a ponta com a api real: 33 de 33 etapas](https://github.com/rodarglobal/rodar-backend/blob/main/evidence/validacao.md) · [telas do app](https://github.com/rodarglobal/rodar-mobile#telas-do-aplicativo) |
+| **Demo no ar** | [painel do CCO e site no modo Demo](https://rodarglobal.github.io/rodar-web/) (clique em **Entrar com SSO**) · [app do motorista no navegador](https://rodarglobal.github.io/rodar-mobile/) |
+| **Ver sem instalar nada** | [tour em vídeo de 1 min](https://github.com/rodarglobal/rodar-web/blob/main/docs/assets/readme/tour.mp4) do site e do painel · [tour do app do motorista (1 min)](https://github.com/rodarglobal/rodar-mobile/blob/main/docs/assets/readme/tour.mp4) · [validação ponta a ponta com a api real: 33 de 33 etapas](https://github.com/rodarglobal/rodar-backend/blob/main/evidence/validacao.md) · [telas do app](https://github.com/rodarglobal/rodar-mobile#telas-do-aplicativo) |
 | **Repositórios** | [rodar-backend](https://github.com/rodarglobal/rodar-backend) (este) · [rodar-web](https://github.com/rodarglobal/rodar-web) · [rodar-mobile](https://github.com/rodarglobal/rodar-mobile) |
-| **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 512 testes automatizados: 299 no backend, 127 no web, 86 no mobile |
+| **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 554 testes automatizados: 318 no backend, 127 no web, 109 no mobile |
 | **Segurança** | JWT assinado no login e exigido em toda escrita (padrão), papel `cco` nas ações da central, motorista só na própria rota, CORS restrito, segredo do LLM e limite de ligações. O que falta para produção está [escrito aqui](#o-que-falta-para-produção) |
 | **O que é simulado** | login sem senha, GPS da rota, documentos fiscais e o modo Demo do painel: [lista completa](#simulado--pré-existente-e5e8) |
-<!-- Demo publicada e vídeo de 3 min do Hack Brasil: incluir as duas linhas aqui antes de 30/11. -->
+| **Glossário** | **CCO**: a central de operações da transportadora · **recebedor**: quem descarrega (CD, atacado, loja) · **doca**: o portão de descarga · **estadia**: o valor que a lei manda pagar pelo caminhão parado além de 5 h (a **franquia**; Lei 11.442) · **geocerca**: o raio em volta do destino que marca a chegada · **Task**: o pedido que o CCO precisa responder |
+<!-- Vídeo de 3 min do Hack Brasil: incluir a linha aqui antes de 30/11. -->
+
+## Por que importa
+
+- **11h40 parado num CD.** Na Grande SP, a descarga levou 5h09 em média em 2025, a maior em 10 anos, e 11h40 nos centros de distribuição ([IER 2025, IPTC/SETCESP](https://setcesp.org.br/noticias/a-demora-que-compromete-a-eficiencia-2/), 175 recebedores).
+- **9 em cada 10 não recebem pela espera.** 91% dos caminhoneiros autônomos que esperam mais de 5 h não recebem a estadia, embora a lei a garanta ([CNTA 2025](https://mundologistica.com.br/noticias/caminhoneiros-autonomos-aceitam-frete-abaixo-do-piso-por-necessidade), 2.002 autônomos; amostra não probabilística).
+- **Ninguém registra o tempo parado.** Sem hora de chegada provada, não há o que cobrar.
+
+**Quanto vale, por entrega:** uma carreta de 30 t que espera 11h40 num CD tem 7 h além da franquia: 7 h × 30 t × R$ 2,50 ([valor da ANTT](https://mundologistica.com.br/noticias/antt-reajusta-estadia-tempo-adicional-carga-descarga)) = **R$ 525 de estadia**, calculada por este backend. Numa frota de 50 carretas com uma entrega assim por semana, são cerca de **R$ 113 mil por mês** de estadia devida que hoje não é cobrada por falta de prova (estimativa nossa, com as premissas acima).
 
 ## Propósito, fronteiras e estado atual
 
