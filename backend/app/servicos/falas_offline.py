@@ -40,13 +40,14 @@ def formato(cabecalho: bytes) -> Optional[str]:
 
 
 def quando(texto: Optional[str], padrao: datetime) -> datetime:
-    """ISO do app → UTC sem tzinfo (formato do banco). Inválido ou no futuro: usa `padrao`."""
+    """ISO do app → UTC com tzinfo (mesmo formato do relógio). Inválido ou no futuro: usa `padrao`."""
     try:
         dt = datetime.fromisoformat((texto or "").replace("Z", "+00:00"))
     except ValueError:
         return padrao
-    if dt.tzinfo:
-        dt = dt.astimezone(UTC).replace(tzinfo=None)
+    dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
+    if padrao.tzinfo is None:
+        padrao = padrao.replace(tzinfo=UTC)
     return min(dt, padrao)
 
 
