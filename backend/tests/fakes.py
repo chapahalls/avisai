@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Optional
 
-from app.integracoes.livekit import LiveKitErro
 
 
 @dataclass

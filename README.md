@@ -286,6 +286,9 @@ Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi
 |---|---|---|---|
 | GET | `/health` | — | estado da configuração LiveKit, túnel, Twilio e LLM |
 | GET | `/usuarios?role=driver\|cco`<br>`/api/users` | — | perfis persistidos de demonstração |
+| POST | `/usuarios` | `{nome, email}` | cadastra um operador da central (perfil `cco`); 409 se o e-mail já existir |
+| GET | `/livekit/config` | — | diz se o LiveKit está configurado e a `LIVEKIT_URL`; nunca expõe chave ou segredo |
+| POST | `/livekit/token` | `{sala?}` | token de participante (60 min) assinado com `LIVEKIT_API_SECRET`; exige login quando a autenticação está ativa |
 | POST | `/auth/sso` | `{email}` | login MOCK (sem senha); devolve perfil e JWT assinado, exigido nas escritas |
 | GET | `/token?room=&identity=` | — | token LiveKit de curta duração para uma identidade ativa autorizada |
 | POST | `/sessions` | `{rota_id}` | inicia o agente da viagem e devolve o token do motorista |

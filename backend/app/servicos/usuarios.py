@@ -1,6 +1,8 @@
 """Perfis persistidos da demonstração; login por e-mail conhecido, sem autenticação real."""
 from typing import Optional
 
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from ..infra.db import sessao
@@ -46,6 +48,27 @@ def garantir_cco(s: Session, email: str, nome: str) -> Usuario:
     user = Usuario(email=email, nome=nome, papel="cco")
     s.add(user)
     return user
+
+
+def criar_cco(nome: str, email: str) -> dict:
+    """Cadastra um operador da central. O e-mail é único entre perfis e cadastros de motorista."""
+    nome = nome.strip()
+    if not nome:
+        raise ValueError("Nome obrigatório")
+    normalized = normalizar_email(email)
+    with sessao() as s:
+        if (s.exec(select(Usuario).where(Usuario.email == normalized)).first()
+                or s.exec(select(Motorista).where(func.lower(func.trim(Motorista.email)) == normalized)).first()):
+            raise ConflitoUsuario("E-mail já cadastrado")
+        user = Usuario(email=normalized, nome=nome, papel="cco")
+        try:
+            s.add(user)
+            s.commit()
+        except IntegrityError as error:
+            s.rollback()
+            raise ConflitoUsuario("Não foi possível criar o cadastro com este e-mail") from error
+        s.refresh(user)
+        return _perfil(s, user)
 
 
 def _perfil(s: Session, user: Usuario) -> dict:

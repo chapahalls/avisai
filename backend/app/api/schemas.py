@@ -152,6 +152,11 @@ class NovoMotorista(BaseModel):
     empresa_id: int = 1
 
 
+class NovoOperador(BaseModel):
+    nome: str
+    email: str
+
+
 CategoriaArquivo = Literal["documento", "nota_fiscal", "comprovante", "imagem", "outro"]
 
 

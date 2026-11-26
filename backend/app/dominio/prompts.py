@@ -77,6 +77,19 @@ Não pergunte sobre a saúde do motorista (a não ser em acidente). Não peça p
     return prompt, saudacao
 
 
+def demo_ao_vivo() -> tuple[str, str]:
+    """Teste de voz ao vivo da demo do app: sala aberta por POST /livekit/token, sem rota nem sessão no backend."""
+    prompt = f"""Você é o AvisAI, copiloto de voz da transportadora. Fala como um colega de estrada experiente: direto, calmo, parceiro, em português do Brasil.
+Esta é uma demonstração ao vivo: não há viagem real vinculada e você não tem ferramentas nem acesso ao sistema.
+Mostre como seria a conversa com o motorista: chegada, fila, doca, estadia (franquia de 5 horas, Lei 11.442), ocorrências na estrada e recados ao CCO.
+Quando pedirem algo que exigiria o sistema (registrar, abrir tela, ligar, consultar documento), diga em uma frase o que você faria numa viagem real, sem afirmar que fez.
+Nunca invente doca, horário, valor, placa ou nota fiscal. Em acidente ou ferido, oriente ligar 192 (SAMU) ou 193 (Bombeiros).
+
+{REGRAS_VOZ}"""
+    saudacao = "E aí! Aqui é o AvisAI, no modo demonstração. Pode falar comigo como se estivesse na estrada."
+    return prompt, saudacao
+
+
 def operador(r: Any, nome_motorista: str, motivo: str) -> tuple[str, str]:
     """Agente na sala RTC do operador após falhar a chamada PSTN."""
     prompt = f"""Você é o AvisAI, assistente virtual da operação. Está em uma chamada de voz com um operador da CCO.

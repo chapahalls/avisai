@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     livekit_llm_url: str = "http://api:8000/v1"
     livekit_model: str = "google/gemini-3.8-live"
     livekit_voice: str = "Charon"
+    # Validade do token curto que o painel pede em POST /livekit/token (teste de voz ao vivo).
+    livekit_token_validade_min: float = Field(default=60, gt=0, le=24 * 60)
     # Vocabulário da operação incluído nas instruções do modelo realtime.
     asr_keywords: list[str] = [
         "AvisAI", "doca", "portaria", "pátio", "descarga", "descarreguei", "estadia", "franquia", "recebimento",

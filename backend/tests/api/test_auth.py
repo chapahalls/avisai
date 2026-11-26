@@ -61,6 +61,7 @@ async def test_com_auth_obrigatoria_publicar_rota_exige_cco(client, container):
     ("POST", "/tasks/1/confirmar", {}),
     ("POST", "/rotas/1/atribuir", {"motorista_id": 1}),
     ("POST", "/motoristas", {"nome": "X", "telefone_e164": "+5511900000099", "email": "x@rotasul.test"}),
+    ("POST", "/usuarios", {"nome": "X", "email": "operador.x@rotasul.test"}),
     ("POST", "/cco/chamados/1/responder", {"resposta": "ok"}),
     ("POST", "/cco/rotas/1/ligar", {"destino": "operador", "motivo": "teste"}),
 ])

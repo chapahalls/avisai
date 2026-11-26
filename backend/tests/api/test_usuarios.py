@@ -88,3 +88,24 @@ async def test_falha_no_perfil_reverte_motorista(client, monkeypatch):
     with sessao() as s:
         assert not s.exec(select(Motorista).where(Motorista.email == "reverter@example.test")).all()
         assert not s.exec(select(Usuario).where(Usuario.email == "reverter@example.test")).all()
+
+
+async def test_post_usuarios_cria_operador_cco_e_ele_entra_no_sso(client):
+    created = await client.post("/usuarios", json={"nome": "  Carla Operadora ", "email": " CARLA@CCO.TEST "})
+    assert created.status_code == 200, created.text
+    profile = created.json()
+    assert profile["role"] == "cco" and profile["name"] == "Carla Operadora" and profile["email"] == "carla@cco.test"
+    assert profile["driverId"] is None and profile["tripId"] is None
+    assert profile in (await client.get("/usuarios", params={"role": "cco"})).json()
+    assert (await client.post("/auth/sso", json={"email": "carla@cco.test"})).json()["user"] == profile
+
+
+async def test_post_usuarios_rejeita_email_duplicado_ou_invalido_sem_criar(client):
+    with sessao() as s:
+        antes = len(s.exec(select(Usuario)).all())
+    for email in ["cco@avisai.test", " CARLOS@ROTASUL.TEST "]:
+        assert (await client.post("/usuarios", json={"nome": "Duplicado", "email": email})).status_code == 409
+    assert (await client.post("/usuarios", json={"nome": "Inválido", "email": "x@@cco.test"})).status_code == 400
+    assert (await client.post("/usuarios", json={"nome": "   ", "email": "vazio@cco.test"})).status_code == 400
+    with sessao() as s:
+        assert len(s.exec(select(Usuario)).all()) == antes

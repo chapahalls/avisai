@@ -39,6 +39,9 @@ class DiscadorSIP:
         self.c = c
 
     async def ligar(self, room: str, numero: str, identity: str) -> str:
+        # Sem trunk não há telefone: falha aqui para o chamador cair no plano B (RTC), qualquer que seja o cliente.
+        if not self.c.settings.livekit_sip_trunk_id:
+            raise RuntimeError("LIVEKIT_SIP_TRUNK_ID não configurado")
         return await self.c.livekit.dial(room, numero, identity)
 
     async def encerrar(self, room: str, identity: str) -> None:

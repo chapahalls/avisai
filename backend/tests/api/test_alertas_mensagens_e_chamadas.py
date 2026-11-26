@@ -1,6 +1,7 @@
 """Fluxos CCO em tempo real: alerta, decisão, mensagem e fallback Twilio→LiveKit."""
 import json
 
+import jwt
 from sqlmodel import select
 
 from app.infra.db import sessao
@@ -60,7 +61,10 @@ async def test_tool_ligar_registra_falha_twilio_e_fallback_livekit_atendivel(cli
     assert "Twilio falhou" in eventos("decisao_agente")[-2].dados["decisao"]["percebeu"]
 
     pendente = (await client.get("/operador/chamadas/atual")).json()["chamada"]
-    assert pendente["id"] == chamada.id and pendente["token"].startswith("007")
+    assert pendente["id"] == chamada.id
+    # Token LiveKit (JWT) para a sala da chamada, assinado com a chave do fixture `settings`.
+    claims = jwt.decode(pendente["token"], "test-secret", algorithms=["HS256"])
+    assert claims["iss"] == "test-key" and claims["video"]["room"] == chamada.livekit_room
     atendida = await client.post(f"/operador/chamadas/{chamada.id}/atender")
     assert atendida.status_code == 200 and atendida.json()["status"] == "atendida"
 

@@ -9,6 +9,7 @@ from livekit import agents, rtc
 from livekit.agents import Agent, AgentSession, RunContext, function_tool, inference
 from livekit.agents.llm import ChatMessage
 
+from .dominio import prompts
 from .infra.settings import Settings
 from .servicos import ferramentas
 
@@ -79,14 +80,47 @@ def _instrucoes(metadata: dict[str, Any]) -> str:
     return instructions
 
 
+def _metadata(raw: str | None) -> dict[str, Any]:
+    try:
+        data = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 async def accept_job(req: agents.JobRequest) -> None:
-    metadata = json.loads(req.job.metadata or "{}")
-    await req.accept(name="RODAR", identity=metadata["agent_identity"])
+    metadata = _metadata(req.job.metadata)
+    # Sessões do backend mandam a identidade; o despacho pelo token do teste ao vivo vem sem metadata.
+    identity = metadata.get("agent_identity") or f"agente-{req.room.name}"
+    await req.accept(name="RODAR", identity=identity)
+
+
+async def demo_ao_vivo(ctx: agents.JobContext) -> None:
+    """Sala do teste ao vivo (POST /livekit/token): conversa sem rota, sem ferramentas e sem sincronizar com o backend."""
+    instructions, greeting = prompts.demo_ao_vivo()
+    session = AgentSession(
+        llm=inference.RealtimeModel(model=settings.livekit_model, voice=settings.livekit_voice),
+        user_away_timeout=None,
+    )
+    await session.start(room=ctx.room, agent=Agent(instructions=_instrucoes({"instructions": instructions})))
+    await ctx.wait_for_participant()
+    await session.generate_reply(
+        instructions=(
+            "Cumprimente o usuário dizendo exatamente o texto entre as tags <mensagem>. "
+            f"Não acrescente nem altere palavras. <mensagem>{greeting}</mensagem>"
+        ),
+        allow_interruptions=True,
+    )
 
 
 @server.rtc_session(agent_name=settings.livekit_agent_name, on_request=accept_job)
 async def voice_agent(ctx: agents.JobContext) -> None:
-    metadata = json.loads(ctx.job.metadata or "{}")
+    metadata = _metadata(ctx.job.metadata)
+    if "session_id" not in metadata:
+        log.info("despacho sem sessão do backend: modo demo na sala %s", ctx.room.name)
+        await ctx.connect()
+        await demo_ao_vivo(ctx)
+        return
     session_id = int(metadata["session_id"])
     role = str(metadata["role"])
     base = settings.livekit_llm_url.rstrip("/")

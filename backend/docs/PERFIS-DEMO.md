@@ -33,6 +33,11 @@ E-mails são normalizados com trim e letras minúsculas.
 E-mail já cadastrado, inclusive de CCO, recebe 409 sem modificar o cadastro.
 Sem e-mail, cria apenas motorista, que não aparece no seletor de perfis.
 
+`POST /usuarios {nome, email}` (papel `cco` exigido quando a autenticação está
+ativa) cria um operador da central (`role: "cco"`) e devolve o perfil no mesmo
+formato de `GET /usuarios`. E-mail já usado por outro perfil ou cadastro de
+motorista recebe 409; nome vazio ou e-mail inválido recebe 400.
+
 ## População idempotente
 
 Execute `alembic upgrade head` e `python -m app.seed`. A migração acrescenta
