@@ -21,6 +21,14 @@ def test_sete_horas_parado_cobra_duas_horas_excedentes():
     assert x.franquia_restante_h == 0
 
 
+def test_hora_ou_fracao_arredonda_pra_cima():
+    """Lei 11.442, art. 11, §5º: "por tonelada/hora ou fração" — hora começada conta inteira."""
+    x = estadia.calcular(inicio=T0, agora=T0 + timedelta(hours=11, minutes=40), capacidade_t=30, valor_t_h=2.50)
+    assert x.horas_excedentes == 7
+    assert x.valor == 525.0
+    assert x.valor_fmt == "R$ 525,00"
+
+
 def test_aceleracao_da_demo():
     x = estadia.calcular(inicio=T0, agora=T0 + timedelta(seconds=6), capacidade_t=28, aceleracao=600)
     assert x.horas_paradas == 1

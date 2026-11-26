@@ -5,6 +5,8 @@ fila (outbox). Quando a rede volta, cada áudio chega aqui com a chave de idempo
 horário em que foi falado. O backend guarda o arquivo, transcreve e passa o texto ao mesmo
 agente da conversa online, que registra o que a fala pede. A resposta vira aviso ao motorista.
 Uma fala por vez em cada rota, na ordem de chegada (que é a ordem em que foram faladas).
+O áudio é apagado depois de transcrito com sucesso: só a transcrição fica registrada no
+evento. Se a transcrição falhar, o arquivo permanece em disco para permitir diagnóstico.
 """
 import asyncio
 import logging
@@ -136,13 +138,15 @@ async def _processar(c, ev: Evento) -> None:
     if not c.transcritor:
         _atualizar(ev.id, status="sem_transcricao")
         return
+    caminho = Path(c.settings.falas_offline_dir) / dados["arquivo"]
     try:
-        audio = (Path(c.settings.falas_offline_dir) / dados["arquivo"]).read_bytes()
+        audio = caminho.read_bytes()
         texto = await c.transcritor.transcrever(audio, dados["arquivo"], dados["tipo_mime"])
     except Exception as e:  # noqa: BLE001
         log.warning("transcrição da fala offline %s falhou: %s", ev.id, e)
         _atualizar(ev.id, status="erro_transcricao", erro=str(e)[:300])
         return
+    caminho.unlink(missing_ok=True)  # transcrito: apaga o áudio, só a transcrição fica registrada
     if not texto:
         _atualizar(ev.id, status="vazia")
         return

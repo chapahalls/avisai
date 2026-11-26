@@ -1,5 +1,6 @@
 """Porta de entrada do LiveKit: configuração pública sem segredo e token curto assinado pelo backend."""
 import jwt
+import pytest
 
 
 def _configurar(container, agente: str = ""):
@@ -45,6 +46,15 @@ async def test_sem_sala_usa_sala_propria_e_rejeita_nome_invalido(client, contain
     assert body["sala"] == f"rodar-demo-{body['identidade']}"
     assert "roomConfig" not in jwt.decode(body["token"], options={"verify_signature": False})
     assert (await client.post("/livekit/token", json={"sala": "sala com espaço/../"})).status_code == 400
+
+
+@pytest.mark.parametrize("sala", ["rodar-rota-1", "rodar-recebedor-1", "rodar-operador-1"])
+async def test_token_de_demo_nao_abre_sala_de_sessao_real(client, container, sala):
+    """O token de demo (sem dono nem checagem de rota) não pode assinar as salas das sessões
+    reais do backend: só /token (GET), restrito ao dono da rota ou à central, pode."""
+    _configurar(container)
+    r = await client.post("/livekit/token", json={"sala": sala})
+    assert r.status_code == 400, r.text
 
 
 async def test_com_auth_obrigatoria_token_exige_login_e_usa_identidade_do_perfil(client, container):
