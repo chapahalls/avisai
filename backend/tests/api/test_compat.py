@@ -10,19 +10,20 @@ def evento_app(tipo, payload, chave="k-1", trip="1"):
             "occurredAt": "2026-11-22T14:00:00Z", "source": "driver", "payload": payload}
 
 
-async def test_agent_start_e_stop(client, fake_agora):
+async def test_agent_start_e_stop(client, fake_livekit):
     r = await client.post("/agent/start", json={"tripId": "1"})
     assert r.status_code == 200
     d = r.json()
-    assert {"appId", "channel", "uid", "token", "agentId", "sessionId", "agentUid"} <= set(d)
-    assert d["channel"] == "avisai-rota-1" and d["uid"] == 1001
+    assert {"livekitURL", "room", "identity", "token", "agentDispatchId", "sessionId"} <= set(d)
+    assert d["room"] == "rodar-rota-1" and d["identity"] == "motorista-1"
     r2 = await client.post("/agent/stop", json={"sessionId": d["sessionId"]})
-    assert r2.status_code == 200 and fake_agora.leaves == [d["agentId"]]
+    assert r2.status_code == 200
+    assert fake_livekit.removals == [(d["room"], f"rodar-agente-{d['sessionId']}")]
 
 
-async def test_call_receiver(client, fake_agora):
+async def test_call_receiver(client, fake_livekit):
     r = await client.post("/call/receiver", json={"tripId": "1"})
-    assert r.status_code == 200 and r.json()["channel"].startswith("avisai-recebedor-")
+    assert r.status_code == 200 and r.json()["room"].startswith("rodar-recebedor-")
 
 
 async def test_post_events_e_idempotente(client):
@@ -65,13 +66,3 @@ async def test_api_route_receivers_documents_sso(client):
     assert any(d["kind"] == "NF-e" for d in docs)
     sso = (await client.post("/auth/sso", json={"email": "carlos@rotasul.test"})).json()
     assert sso["token"] and sso["user"]["role"] in ("driver", "cco")
-
-
-def test_aliases_de_env_do_doc(monkeypatch):
-    from app.infra.settings import Settings
-
-    monkeypatch.setenv("AGORA_REST_KEY", "k")
-    monkeypatch.setenv("AGORA_REST_SECRET", "s")
-    monkeypatch.setenv("SIP_FROM_NUMBER", "+15550001111")
-    s = Settings()
-    assert s.agora_customer_id == "k" and s.agora_customer_secret == "s" and s.agora_sip_from_number == "+15550001111"

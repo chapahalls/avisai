@@ -28,11 +28,11 @@ def _geo(tipo):
 
 # ---------- 1. retirada na origem ----------
 
-async def test_na_origem_agente_pergunta_se_confirma_a_retirada(client, fake_agora):
+async def test_na_origem_agente_pergunta_se_confirma_a_retirada(client, fake_livekit):
     await _sessao(client)
     r = (await client.post("/rotas/1/posicao", json=ORIGEM)).json()
     assert "RETIRADA" in r["disparos"] and r["status"] == "na_origem"
-    assert any("Confirma a retirada" in f for f in fake_agora.falas())
+    assert any("Confirma a retirada" in f for f in fake_livekit.falas())
     assert _geo("RETIRADA").status == "nao_validado"
 
 
@@ -93,7 +93,7 @@ async def test_relatorio_inicial_por_voz(client, fake_llm):
 
 # ---------- 3. aviso ao recebedor na aproximação ----------
 
-async def test_aproximacao_liga_para_o_recebedor_por_padrao(client, fake_agora):
+async def test_aproximacao_liga_para_o_recebedor_por_padrao(client, fake_livekit):
     await _sessao(client)
     await client.post("/rotas/1/posicao", json=PERTO)
     await esperar(lambda: eventos("ligacao_recebedor"))
@@ -103,7 +103,7 @@ async def test_aproximacao_liga_para_o_recebedor_por_padrao(client, fake_agora):
     assert eventos("aviso_recebedor")  # ReceiverNotified
 
 
-async def test_recebedor_nao_recebe_hoje_aplica_regra_e_avisa(client, fake_agora, container):
+async def test_recebedor_nao_recebe_hoje_aplica_regra_e_avisa(client, fake_livekit, container):
     await _sessao(client)
     lig = await ligacoes.ligar(container, 1, "aproximacao")
     sa_id = obter(LigacaoRecebedor, lig.id).sessao_id
@@ -111,5 +111,5 @@ async def test_recebedor_nao_recebe_hoje_aplica_regra_e_avisa(client, fake_agora
                                       resumo="Hoje não recebemos, só amanhã.", recebe_hoje=False)
     ev = eventos("nao_recebe_hoje")[-1]
     assert "regra" in ev.dados and ev.dados["regra"]
-    fala = fake_agora.falas()[-1]
+    fala = fake_livekit.falas()[-1]
     assert "amanhã" in fala and ev.dados["regra"].split(".")[0].lower()[:15] in fala.lower()

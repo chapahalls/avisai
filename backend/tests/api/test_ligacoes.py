@@ -1,4 +1,4 @@
-"""Página do recebedor (plano B) pega canal, uid e token pela API."""
+"""Página do recebedor (plano B) pega sala, identidade e token LiveKit pela API."""
 
 
 async def test_dada_ligacao_em_andamento_entao_pagina_recebe_token(client, container):
@@ -6,9 +6,9 @@ async def test_dada_ligacao_em_andamento_entao_pagina_recebe_token(client, conta
     r = await client.get(f"/ligacoes/{lig['id']}")
     assert r.status_code == 200
     d = r.json()
-    assert d["canal"] == f"avisai-recebedor-{lig['id']}"
-    assert d["uid"] == 3001
-    assert d["token"].startswith("007")
+    assert d["canal"] == f"rodar-recebedor-{lig['id']}"
+    assert d["room"] == d["canal"] and d["identity"] == f"recebedor-{lig['id']}"
+    assert d["token"].count(".") == 2
     atual = (await client.get("/ligacoes/atual/recebedor")).json()
     assert atual["id"] == lig["id"]
 

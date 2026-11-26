@@ -1,5 +1,5 @@
 """Configuração. Em Docker vem do .env (env_file do compose)."""
-from pydantic import AliasChoices, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 FILLER_PADRAO = [
@@ -10,44 +10,32 @@ FILLER_PADRAO = [
 
 
 class Settings(BaseSettings):
-    # Agora
-    agora_app_id: str = ""
-    agora_app_certificate: str = ""
-    # aceita também os nomes do docs/arquitetura-avisai.md (AGORA_REST_KEY/SECRET)
-    agora_customer_id: str = Field("", validation_alias=AliasChoices("AGORA_CUSTOMER_ID", "AGORA_REST_KEY", "agora_customer_id"))
-    agora_customer_secret: str = Field("", validation_alias=AliasChoices("AGORA_CUSTOMER_SECRET", "AGORA_REST_SECRET", "agora_customer_secret"))
-    agora_api_base: str = "https://api.agora.io/api/conversational-ai-agent"
-    agora_enable_rtm: bool = True
-    agora_asr_preset: str = "deepgram_nova_3"
-    agora_tts_preset: str = "minimax_speech_2_8_turbo"
-    tts_sample_rate: int = 24000  # obrigatório no MiniMax (docs da Agora)
-    tts_language_boost: str = "Portuguese"  # fixa o idioma do MiniMax (evita sotaque errado em frases curtas)
-    tts_speed: float = 1.0
-    agora_llm_preset: str = "openai_gpt_4o_mini"
-    agora_sal: bool = False
-    asr_language: str = "pt-BR"
-    # ASR: deepgram (gerenciado, nova-3|nova-2) | ares (ASR da Agora, gerenciado, com palavras-chave) | openai (BYOK)
-    asr_vendor: str = "ares"
-    asr_model: str = ""  # vazio = padrão do fornecedor (nova-3 / gpt-4o-mini-transcribe)
-    asr_api_key: str = ""  # openai; vazio = usa LLM_API_KEY se o LLM for a OpenAI
+    # LiveKit: transporte WebRTC, dispatch do agente e telefonia SIP.
+    livekit_url: str = ""
+    livekit_api_key: str = ""
+    livekit_api_secret: str = ""
+    livekit_agent_name: str = "rodar-voice-agent"
+    livekit_llm_url: str = "http://api:8000/v1"
+    livekit_model: str = "google/gemini-3.8-live"
+    livekit_voice: str = "Charon"
+    # Validade do token curto que o painel pede em POST /livekit/token (teste de voz ao vivo).
+    livekit_token_validade_min: float = Field(default=60, gt=0, le=24 * 60)
+    # Vocabulário da operação incluído nas instruções do modelo realtime.
     asr_keywords: list[str] = [
         "AvisAI", "doca", "portaria", "pátio", "descarga", "descarreguei", "estadia", "franquia", "recebimento",
         "recebedor", "CCO", "central", "nota fiscal", "NF-e", "CT-e", "DANFE", "palete", "paletes", "toneladas",
         "lacre", "canhoto", "avaria", "retirada", "check-in", "ocorrência", "fila", "placa", "frete",
     ]
-    # Voz neutra e clara de copiloto. A "Deep-VoicedGentleman" é grave e soprada (de narração
-    # íntima) e soava sedutora. Lista: platform.minimax.io/docs/faq/system-voice-id
-    tts_voice_id: str = "Portuguese_ReliableMan"
-    tts_voice_id_recebedor: str = "Portuguese_Wiselady"
     filler_words: list[str] = FILLER_PADRAO
     filler_espera_ms: int = 1500
 
     # Ligação ao recebedor: rtc (plano B, navegador) | sip (plano A, telefone)
     recebedor_modo: str = "rtc"
-    agora_sip_from_number: str = Field("", validation_alias=AliasChoices("AGORA_SIP_FROM_NUMBER", "SIP_FROM_NUMBER", "agora_sip_from_number"))
+    livekit_sip_trunk_id: str = ""
+    livekit_sip_from_number: str = ""
     recebedor_telefone_e164: str = "+5519900000002"
 
-    # Telefonia do agente: Twilio é a primeira tentativa; Agora RTC atende no navegador do operador.
+    # Telefonia do agente: Twilio PSTN é a primeira tentativa; LiveKit RTC atende no navegador.
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_from_number: str = ""
@@ -55,16 +43,16 @@ class Settings(BaseSettings):
     twilio_supervisor_phone_e164: str = ""
     chamada_operador_timeout_s: float = 30
 
-    # LLM: custom = Agora chama o nosso /v1/chat/completions; agora = LLM gerenciado
-    llm_mode: str = "custom"
+    # O agente usa este gateway para executar ferramentas e registrar eventos no backend.
     llm_api_key: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
     llm_max_tokens: int = 150
     llm_shared_secret: str = ""
 
-    # Acesso: token JWT assinado no /auth/sso. Com auth_obrigatoria, as ações da central exigem papel "cco".
-    auth_obrigatoria: bool = False
+    # Acesso: token JWT assinado no /auth/sso. Ligado por padrão: escrita exige token, ações da central exigem
+    # papel "cco" e o motorista só mexe na própria rota. Desligue (AUTH_OBRIGATORIA=false) só em desenvolvimento.
+    auth_obrigatoria: bool = True
     auth_segredo: str = ""
     auth_token_validade_h: float = 12
     # Origens permitidas no CORS (painel web). "*" libera tudo; use só em desenvolvimento.
@@ -80,12 +68,25 @@ class Settings(BaseSettings):
     public_url: str = ""
     tunnel_metrics_url: str = ""
 
+    # Geocodificação do endereço digitado no cadastro de rota: nominatim | "" (desligada).
+    # A instância pública do Nominatim aceita 1 req/s; para produção, use instância própria ou outro provedor.
+    geocodificacao_provedor: str = "nominatim"
+    geocodificacao_url: str = "https://nominatim.openstreetmap.org"
+    geocodificacao_pais: str = "br"
+    geocodificacao_user_agent: str = "AvisAI-backend/0.1"
+    geocodificacao_intervalo_s: float = Field(default=1.0, ge=0)
+
     # Banco
     database_url: str = "postgresql+psycopg://avisai:avisai@db:5432/avisai"
 
     # Arquivos da viagem: conteúdo persistente, separado dos documentos fiscais fictícios.
     arquivos_dir: str = "data/arquivos"
     arquivos_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0, le=100 * 1024 * 1024)
+    # Falas gravadas sem sinal (offline-first): o app guarda o áudio e manda quando a rede volta.
+    falas_offline_dir: str = "data/falas_offline"
+    falas_offline_max_bytes: int = Field(default=5 * 1024 * 1024, gt=0, le=50 * 1024 * 1024)
+    stt_model: str = "gpt-4o-mini-transcribe"  # transcrição na API do LLM (mesma chave e URL)
+    fuso_utc_horas: int = -3  # horário falado ao motorista (Brasília, sem horário de verão)
 
     # Ritmo da demo
     cco_intervalo_s: float = 20
@@ -103,8 +104,8 @@ class Settings(BaseSettings):
     divergencia_gps_max_m: float = 500
     model_config = SettingsConfigDict(extra="ignore", env_file=None, populate_by_name=True)
 
-    def agora_configurada(self) -> bool:
-        return bool(self.agora_app_id and self.agora_app_certificate)
+    def livekit_configurada(self) -> bool:
+        return bool(self.livekit_url and self.livekit_api_key and self.livekit_api_secret)
 
     def twilio_configurada(self) -> bool:
         return bool(self.twilio_account_sid and self.twilio_auth_token and self.twilio_from_number)

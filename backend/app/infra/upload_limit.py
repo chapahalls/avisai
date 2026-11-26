@@ -12,10 +12,13 @@ class UploadLimitMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or scope.get("method") != "POST" or not re.fullmatch(r"/rotas/[^/]+/arquivos/?", scope.get("path", "")):
+        rota = re.fullmatch(r"/rotas/[^/]+/(arquivos|falas-offline)/?", scope.get("path", ""))
+        if scope["type"] != "http" or scope.get("method") != "POST" or not rota:
             return await self.app(scope, receive, send)
-        # Margem limitada para cabeçalhos multipart e os dois campos opcionais.
-        maximum = container.atual().settings.arquivos_max_bytes + 64 * 1024
+        settings = container.atual().settings
+        limite = settings.arquivos_max_bytes if rota.group(1) == "arquivos" else settings.falas_offline_max_bytes
+        # Margem limitada para cabeçalhos multipart e os campos de texto.
+        maximum = limite + 64 * 1024
         length = dict(scope.get("headers", [])).get(b"content-length")
         if length is not None:
             try:

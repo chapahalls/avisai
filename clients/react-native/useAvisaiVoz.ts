@@ -2,7 +2,7 @@
  * Hook do app do motorista (React Native): conversa por voz com o agente AvisAI.
  *
  * Copie `clients/tipos.ts` e este arquivo para o app.
- * Dependência: `react-native-agora` >= 4.5.1 (testado com as tipagens da 4.6.4). Tem módulo nativo:
+ * Dependências: `@livekit/react-native` e `livekit-client`. Tem módulo nativo:
  * precisa de dev build ou `expo prebuild` (não roda no Expo Go).
  * Permissões: Android RECORD_AUDIO (pedida aqui), iOS NSMicrophoneUsageDescription no Info.plist.
  *
@@ -10,25 +10,19 @@
  *   <Button title="Falar com o AvisAI" onPress={voz.iniciar} />
  *   <Text>{voz.status} · {voz.estadia?.tempo_parado} · {voz.estadia?.valor_fmt}</Text>
  *
- * Só controle e mídia: o áudio vai do celular direto para a Agora; o backend só cria o agente.
+ * Só controle e mídia: o áudio vai do celular direto para a sala LiveKit; o backend despacha o agente.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PermissionsAndroid, Platform } from "react-native";
-import createAgoraRtcEngine, {
-  AudioRoute,
-  AudioScenarioType,
-  ChannelProfileType,
-  ClientRoleType,
-  type IRtcEngine,
-  type IRtcEngineEventHandler,
-} from "react-native-agora";
+import { AudioSession } from "@livekit/react-native";
+import { Room, RoomEvent } from "livekit-client";
 
 import type { EventoStream, Estadia, Ligacao, MensagensStream, Sessao, TaskCCO } from "../tipos";
 
 export type StatusVoz =
   | "parado" // sem sessão
   | "conectando" // criando o agente / entrando no canal
-  | "aguardando_agente" // no canal, esperando o agente (uid 9001) entrar
+  | "aguardando_agente" // na sala, esperando o agente entrar
   | "conversando" // agente no canal: pode falar (e interromper)
   | "erro";
 
@@ -46,31 +40,6 @@ export interface OpcoesVoz {
   onRotaAtribuida?: (rotaId: number) => void;
   /** Quantos eventos manter em memória (padrão 50). */
   maxEventos?: number;
-}
-
-/** Parâmetros de áudio recomendados pela Agora para agentes de voz (/en/ai/best-practices/audio-setup). */
-function aplicarAudioIA(engine: IRtcEngine, rota: number) {
-  const p = (o: Record<string, unknown>) => engine.setParameters(JSON.stringify(o));
-  p({ "che.audio.aec.split_srate_for_48k": 16000 });
-  p({ "che.audio.sf.enabled": true });
-  p({ "che.audio.sf.stftType": 6 });
-  p({ "che.audio.sf.ainlpLowLatencyFlag": 1 });
-  p({ "che.audio.sf.ainsLowLatencyFlag": 1 });
-  p({ "che.audio.sf.procChainMode": 1 });
-  p({ "che.audio.sf.nlpDynamicMode": 1 });
-  const fone = [
-    AudioRoute.RouteHeadset,
-    AudioRoute.RouteEarpiece,
-    AudioRoute.RouteHeadsetnomic,
-    AudioRoute.RouteBluetoothDeviceHfp,
-    AudioRoute.RouteBluetoothDeviceA2dp,
-  ].includes(rota);
-  p({ "che.audio.sf.nlpAlgRoute": fone ? 0 : 1 });
-  p({ "che.audio.sf.ainlpModelPref": 10 });
-  p({ "che.audio.sf.nsngAlgRoute": 12 });
-  p({ "che.audio.sf.ainsModelPref": 10 });
-  p({ "che.audio.sf.nsngPredefAgg": 11 });
-  p({ "che.audio.agc.enable": false });
 }
 
 async function pedirMicrofone(): Promise<boolean> {
@@ -96,8 +65,7 @@ export function useAvisaiVoz({ api, rotaId, motoristaId, onRotaAtribuida, maxEve
   const [task, setTask] = useState<TaskCCO | null>(null);
   const [ligacao, setLigacao] = useState<Ligacao | null>(null);
 
-  const engineRef = useRef<IRtcEngine | null>(null);
-  const handlerRef = useRef<IRtcEngineEventHandler | null>(null);
+  const roomRef = useRef<Room | null>(null);
   const sessaoRef = useRef<Sessao | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const vivoRef = useRef(true);
@@ -165,43 +133,7 @@ export function useAvisaiVoz({ api, rotaId, motoristaId, onRotaAtribuida, maxEve
     };
   }, [conectarWs]);
 
-  // ---------- Motor RTC ----------
-  const obterEngine = useCallback((appId: string): IRtcEngine => {
-    if (engineRef.current) return engineRef.current;
-    const engine = createAgoraRtcEngine();
-    engine.initialize({
-      appId,
-      channelProfile: ChannelProfileType.ChannelProfileLiveBroadcasting,
-      audioScenario: AudioScenarioType.AudioScenarioAiClient, // cenário da Agora para agentes de IA
-    });
-    engine.enableAudio();
-    aplicarAudioIA(engine, AudioRoute.RouteDefault);
-    const handler: IRtcEngineEventHandler = {
-      onUserJoined: (_c, uid) => {
-        if (uid === sessaoRef.current?.agent_uid) setStatus("conversando");
-      },
-      onUserOffline: (_c, uid) => {
-        if (uid === sessaoRef.current?.agent_uid) setStatus("aguardando_agente");
-      },
-      onTokenPrivilegeWillExpire: async () => {
-        const s = sessaoRef.current;
-        if (!s) return;
-        try {
-          const t = await json<{ token: string }>(await fetch(`${base}/token?channel=${s.canal}&uid=${s.user_uid}`));
-          engineRef.current?.renewToken(t.token);
-        } catch (e) {
-          setErro(`falha ao renovar token: ${String(e)}`);
-        }
-      },
-      onAudioRoutingChanged: (rota) => engineRef.current && aplicarAudioIA(engineRef.current, rota),
-      onError: (err, msg) => setErro(`Agora ${err}: ${msg}`),
-    };
-    engine.registerEventHandler(handler);
-    engineRef.current = engine;
-    handlerRef.current = handler;
-    return engine;
-  }, [base]);
-
+  // ---------- Sala LiveKit ----------
   const iniciar = useCallback(async () => {
     setErro(null);
     setStatus("conectando");
@@ -214,28 +146,32 @@ export function useAvisaiVoz({ api, rotaId, motoristaId, onRotaAtribuida, maxEve
           body: JSON.stringify({ rota_id: rotaId }),
         }),
       );
-      if (!s.app_id || !s.token) throw new Error("backend sem credenciais da Agora");
+      if (!s.livekit_url || !s.token || !s.identity) throw new Error("backend sem credenciais do LiveKit");
       sessaoRef.current = s;
       setSessao(s);
-      const engine = obterEngine(s.app_id);
-      engine.setEnableSpeakerphone(true); // viva-voz na cabine
-      engine.joinChannel(s.token, s.canal, s.user_uid, {
-        clientRoleType: ClientRoleType.ClientRoleBroadcaster,
-        publishMicrophoneTrack: true,
-        publishCameraTrack: false,
-        autoSubscribeAudio: true,
-        autoSubscribeVideo: false,
+      await AudioSession.startAudioSession();
+      const room = new Room();
+      roomRef.current = room;
+      room.on(RoomEvent.ParticipantConnected, (participant) => {
+        if (participant.identity === `rodar-agente-${s.id}`) setStatus("conversando");
       });
-      // O 200 do /sessions não quer dizer que o agente já entrou: esperamos onUserJoined(9001).
-      setStatus("aguardando_agente");
+      room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        if (participant.identity === `rodar-agente-${s.id}`) setStatus("aguardando_agente");
+      });
+      room.on(RoomEvent.Disconnected, () => setStatus("parado"));
+      await room.connect(s.livekit_url, s.token);
+      await room.localParticipant.setMicrophoneEnabled(true);
+      setStatus(room.remoteParticipants.has(`rodar-agente-${s.id}`) ? "conversando" : "aguardando_agente");
     } catch (e) {
       setErro(String(e));
       setStatus("erro");
     }
-  }, [base, rotaId, obterEngine]);
+  }, [base, rotaId]);
 
   const encerrar = useCallback(async () => {
-    engineRef.current?.leaveChannel();
+    await roomRef.current?.disconnect();
+    roomRef.current = null;
+    await AudioSession.stopAudioSession();
     const s = sessaoRef.current;
     sessaoRef.current = null;
     setSessao(null);
@@ -245,7 +181,7 @@ export function useAvisaiVoz({ api, rotaId, motoristaId, onRotaAtribuida, maxEve
 
   const alternarMudo = useCallback(() => {
     setMudo((m) => {
-      engineRef.current?.muteLocalAudioStream(!m);
+      roomRef.current?.localParticipant.setMicrophoneEnabled(!m).catch(() => undefined);
       return !m;
     });
   }, []);
@@ -265,12 +201,11 @@ export function useAvisaiVoz({ api, rotaId, motoristaId, onRotaAtribuida, maxEve
   // Libera o motor ao desmontar.
   useEffect(
     () => () => {
-      const e = engineRef.current;
-      if (!e) return;
-      e.leaveChannel();
-      if (handlerRef.current) e.unregisterEventHandler(handlerRef.current);
-      e.release();
-      engineRef.current = null;
+      const room = roomRef.current;
+      if (!room) return;
+      room.disconnect();
+      roomRef.current = null;
+      AudioSession.stopAudioSession();
       const s = sessaoRef.current;
       if (s) fetch(`${base}/sessions/${s.id}`, { method: "DELETE" }).catch(() => undefined);
     },

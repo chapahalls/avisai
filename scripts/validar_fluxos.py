@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Validação ponta a ponta dos fluxos do repo de ideias, contra a api real (e a Agora real).
+"""Validação ponta a ponta dos fluxos do repo de ideias contra a API real e o LiveKit.
 
 Percorre uma viagem inteira numa rota nova: publicação/atribuição, retirada, relatório inicial,
 aproximação + ligação ao recebedor (doca e "não recebe hoje"), chegada com dupla prova de GPS,
 check-in com campo faltante, ocorrência, pergunta sobre a NF, pedido da central, escalonamento do CCO
 + ligação, CCO assume, descarga, eventos do contrato (DomainEvent), métricas e divergência de GPS.
 
-As falas do motorista e do recebedor são simuladas pelo mesmo endpoint que a Agora chama
-(/v1/chat/completions); /join, /speak e /leave vão para a Agora de verdade.
+As falas do motorista e do recebedor são simuladas pelo gateway do LLM (/v1/chat/completions).
+A sala RTC e o agente de voz são executados pelo LiveKit.
 
 Uso (dentro do Docker; grava o relatório em evidence/):  make validar
 Só biblioteca padrão. Sai com código 1 se alguma etapa falhar.
@@ -57,7 +57,7 @@ def req(metodo: str, caminho: str, corpo=None, headers=None, autenticar=True):
 
 
 def falar(sessao_id: int, fala: str) -> str:
-    """Simula uma fala (como a Agora faria) e devolve o texto que o agente responderia."""
+    """Simula uma fala enviada pelo agente de voz e devolve a resposta do gateway."""
     h = {"Authorization": f"Bearer {SEGREDO}"} if SEGREDO else {}
     _, txt = req("POST", f"/v1/chat/completions?sessao={sessao_id}",
                  {"stream": True, "messages": [{"role": "user", "content": fala}]}, h)
@@ -128,11 +128,11 @@ def main() -> int:
     _, sso = req("POST", "/auth/sso", {"email": mot["email"]})
     etapa("1b. Login do motorista traz a rota atribuída (SSO mock)", sso["user"]["tripId"] == str(R))
 
-    # 2. Sessão do agente (Agora real)
+    # 2. Sessão do agente LiveKit
     st, s = req("POST", "/sessions", {"rota_id": R})
     S = s.get("id") if st == 200 else None
-    etapa("2. Agente ConvoAI entra no canal do motorista (/join na Agora)", st == 200 and s.get("agent_id"),
-          f"agent_id {s.get('agent_id', s)}" if st == 200 else str(s)[:200])
+    etapa("2. Agente LiveKit despachado para a sala do motorista", st == 200 and s.get("agent_id"),
+          f"dispatch {s.get('agent_id', s)}" if st == 200 else str(s)[:200])
     if not S:
         return relatorio(inicio, saude)
 
@@ -281,7 +281,7 @@ def relatorio(inicio: datetime, saude: dict) -> int:
     print("| Etapa | Resultado | Detalhe |\n|---|---|---|")
     for nome, v, d in RESULTADOS:
         print(f"| {nome} | {'✅' if v else '❌'} | {d.replace('|', '/')[:220]} |")
-    print("\nFalas simuladas pelo mesmo endpoint que a Agora chama; /join, /speak e /leave reais na Agora. "
+    print("\nAs falas de texto passam pelo gateway do LLM; a sala e o agente são LiveKit. "
           "Não substitui o teste com pessoas falando (qualidade do ASR, latência, barge-in).")
     return 0 if ok == len(RESULTADOS) else 1
 

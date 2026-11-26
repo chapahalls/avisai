@@ -7,7 +7,7 @@ from ..dominio.enums import TipoEvento
 from ..infra.db import sessao
 from ..infra.models import MensagemMotorista
 from . import auditoria, chamadas_agente, consultas
-from .sessoes import VozAgora
+from .sessoes import VozLiveKit
 
 
 def listar(rota_id: int) -> list[MensagemMotorista]:
@@ -68,7 +68,7 @@ async def falar_motorista(c, rota_id: int, remetente: str, texto: str) -> Mensag
         mensagem_id=mensagem.id,
     )
     fala = f"Você recebeu uma mensagem de {remetente} do CCO. A mensagem diz: {texto}. Quer responder?"
-    entregue = await VozAgora(c).falar_motorista(rota_id, fala, prioridade="INTERRUPT")
+    entregue = await VozLiveKit(c).falar_motorista(rota_id, fala, prioridade="INTERRUPT")
     if entregue:
         mensagem = _atualizar(mensagem.id, status="falada", falada_em=c.relogio.agora())
         c.eventos.registrar(

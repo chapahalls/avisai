@@ -7,7 +7,7 @@ from ..dominio.enums import TipoEvento
 from ..infra.db import sessao
 from ..infra.models import SolicitacaoCentral
 from . import consultas
-from .sessoes import VozAgora
+from .sessoes import VozLiveKit
 
 
 def pendente(rota_id: int) -> Optional[SolicitacaoCentral]:
@@ -25,7 +25,7 @@ async def perguntar(c, rota_id: int, pergunta: str) -> SolicitacaoCentral:
         s.commit()
         s.refresh(sol)
     c.eventos.registrar(TipoEvento.PEDIDO_CENTRAL, f"Central pergunta: {pergunta}", rota_id, solicitacao_id=sol.id)
-    await VozAgora(c).falar_motorista(rota_id, f"A central pergunta: {pergunta}")
+    await VozLiveKit(c).falar_motorista(rota_id, f"A central pergunta: {pergunta}")
     return sol
 
 

@@ -12,7 +12,7 @@ def _ligacoes():
         return s.exec(select(LigacaoRecebedor)).all()
 
 
-async def test_sem_resposta_do_cco_tres_tentativas_e_liga_para_recebedor(container, rota_id, fake_agora):
+async def test_sem_resposta_do_cco_tres_tentativas_e_liga_para_recebedor(container, rota_id, fake_livekit):
     await sessoes.iniciar_motorista(container, rota_id)
     t = await tasks.on_chegada(container, rota_id, origem="gps")
     await esperar(lambda: obter(TaskCCO, t.id).status == "escalada_recebedor")
@@ -20,12 +20,12 @@ async def test_sem_resposta_do_cco_tres_tentativas_e_liga_para_recebedor(contain
     assert [n.dados["canal"] for n in notifs] == ["push", "painel", "ligacao"]
     assert [n.dados["prioridade"] for n in notifs] == ["normal", "alta", "critica"]
     assert all("valor_fmt" in n.dados["estadia"] for n in notifs)
-    assert any("ligando pro recebimento" in f for f in fake_agora.falas())
+    assert any("ligando pro recebimento" in f for f in fake_livekit.falas())
     await esperar(lambda: len(_ligacoes()) == 1)
     assert _ligacoes()[0].task_id == t.id
 
 
-async def test_cco_confirma_e_loop_para_sem_ligacao(container, rota_id, fake_agora):
+async def test_cco_confirma_e_loop_para_sem_ligacao(container, rota_id, fake_livekit):
     container.settings.cco_intervalo_s = 0.2
     await sessoes.iniciar_motorista(container, rota_id)
     t = await tasks.on_chegada(container, rota_id, origem="gps")
@@ -38,7 +38,7 @@ async def test_cco_confirma_e_loop_para_sem_ligacao(container, rota_id, fake_ago
     await asyncio.sleep(0.5)
     assert len(eventos("notificacao_cco")) == 1
     assert _ligacoes() == []
-    assert any("CCO assumiu" in f for f in fake_agora.falas())
+    assert any("CCO assumiu" in f for f in fake_livekit.falas())
 
 
 async def test_regra_da_empresa_define_numero_de_tentativas(container, rota_id):
@@ -52,15 +52,15 @@ async def test_regra_da_empresa_define_numero_de_tentativas(container, rota_id):
     assert len(eventos("notificacao_cco")) == 2
 
 
-async def test_falha_ao_falar_com_motorista_nao_impede_a_ligacao(container, rota_id, fake_agora):
-    from app.integracoes.agora_rest import AgoraErro
+async def test_falha_ao_falar_com_motorista_nao_impede_a_ligacao(container, rota_id, fake_livekit):
+    from app.integracoes.livekit import LiveKitErro
 
     await sessoes.iniciar_motorista(container, rota_id)
 
     async def speak_quebrado(*a, **k):
-        raise AgoraErro(503, "rede")
+        raise LiveKitErro(503, "rede")
 
-    fake_agora.speak = speak_quebrado
+    fake_livekit.send_control = speak_quebrado
     t = await tasks.on_chegada(container, rota_id, origem="gps")
     await esperar(lambda: len(_ligacoes()) == 1)
     assert obter(TaskCCO, t.id).status == "escalada_recebedor"

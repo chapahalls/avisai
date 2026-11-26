@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AvisAI · recebedor (plano B)</title>
-<script src="https://cdn.jsdelivr.net/npm/agora-rtc-sdk-ng@4.23.4/AgoraRTC_N-production.js"></script>
-<script src="/static/agora-cliente.js"></script>
+<title>RODAR · recebedor (plano RTC)</title>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<script src="/static/livekit-cliente.js"></script>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; background: #fdf7ee; color: #1b1b1b; }
   .tel { background: #fff; border: 1px solid #e3d3b8; border-radius: 16px; padding: 24px; text-align: center; }
@@ -19,7 +19,7 @@
 <body>
 <div class="tel">
   <h2>Recebimento · Mercadão Campinas</h2>
-  <p><small>Simulação declarada (plano B): o recebedor atende a ligação do agente por um canal Agora RTC no navegador, em vez de um telefone.</small></p>
+  <p><small>O recebedor atende a chamada do agente pela sala de áudio LiveKit no navegador.</small></p>
   <div id="status">Aguardando ligação…</div>
   <button class="atender" id="btnAtender" onclick="atender()" disabled>Atender</button>
   <button class="desligar" onclick="desligar()">Desligar</button>
@@ -48,9 +48,9 @@ setInterval(buscar, 2000); buscar();
 async function atender() {
   document.getElementById("btnAtender").disabled = true;
   document.getElementById("status").textContent = "Em ligação";
-  await AvisaiRTC.entrar({ app_id: lig.app_id, channel: lig.canal, uid: lig.uid, token: lig.token }, log);
+  await AvisaiLiveKit.entrar({ url: lig.url, token: lig.token }, log);
 }
-async function desligar() { await AvisaiRTC.sair(log); document.getElementById("status").textContent = "Desligado"; }
+async function desligar() { await AvisaiLiveKit.sair(log); document.getElementById("status").textContent = "Desligado"; }
 </script>
 </body>
 </html>

@@ -10,6 +10,7 @@ class StatusRota(StrEnum):
     APROXIMANDO = "aproximando"
     NO_DESTINO = "no_destino"
     DESCARREGADA = "descarregada"
+    CANCELADA = "cancelada"  # encerrada sem descarga, por decisão da central
 
 
 class StatusTask(StrEnum):
@@ -81,6 +82,7 @@ class TipoEvento(StrEnum):
     OCORRENCIA = "ocorrencia"
     DESCARGA = "descarga"
     FALA_MOTORISTA = "fala_motorista"
+    FALA_OFFLINE = "fala_offline"  # áudio gravado sem sinal; transcrito e processado quando chega
     FALA_RECEBEDOR = "fala_recebedor"
     FALA_AGENTE = "fala_agente"
     RETIRADA_DETECTADA = "retirada_detectada"
@@ -100,6 +102,7 @@ class TipoEvento(StrEnum):
     EVENTO_APP = "evento_app"
     ROTA_PUBLICADA = "rota_publicada"
     ROTA_ATRIBUIDA = "rota_atribuida"
+    ROTA_CANCELADA = "rota_cancelada"
     PERGUNTA_DOCUMENTO = "pergunta_documento"
     OCORRENCIA_DETALHADA = "ocorrencia_detalhada"
     OCORRENCIA_GRAVE = "ocorrencia_grave"
@@ -111,7 +114,7 @@ class TipoEvento(StrEnum):
     MENSAGEM_MOTORISTA_RESPONDIDA = "mensagem_motorista_respondida"
     MOTORISTA_OFFLINE = "motorista_offline"
     CHAMADA_TWILIO_FALHOU = "chamada_twilio_falhou"
-    CHAMADA_AGORA_INICIADA = "chamada_agora_iniciada"
-    CHAMADA_AGORA_ATENDIDA = "chamada_agora_atendida"
+    CHAMADA_LIVEKIT_INICIADA = "chamada_livekit_iniciada"
+    CHAMADA_LIVEKIT_ATENDIDA = "chamada_livekit_atendida"
     CHAMADA_SEM_RESPOSTA = "chamada_sem_resposta"
     ESCALADA_SUPERVISOR = "escalada_supervisor"

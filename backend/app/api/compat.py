@@ -18,10 +18,9 @@ from ..dominio.enums import TipoEvento
 from ..infra.db import sessao
 from ..infra.eventos import serial
 from ..infra.models import Evento, SessaoAgente
-from ..integracoes import tokens
 from ..servicos import chamados, consultas, ligacoes, metricas, publicacao, reportes, sessoes, tasks, usuarios
 from ..infra import auth
-from .deps import c, erro_http, limitar_ligacao
+from .deps import c, erro_http, exigir_login, limitar_ligacao, verificar_acesso_rota, verificar_acesso_sessao
 from .schemas import DomainEventIn, SsoOut
 
 router = APIRouter(tags=["compat (docs/arquitetura-avisai.md)"])
@@ -43,6 +42,7 @@ TIPO_DOMINIO = {
     "task_confirmada": "TaskAcknowledged",
     "descarga": "UnloadConfirmed",
     "rota_atribuida": "RouteAssigned",
+    "rota_cancelada": "TripCancelled",
     "pergunta_documento": "DocumentQuestionAnswered",
     "ocorrencia_detalhada": "OccurrenceDetailed",
     "ocorrencia_grave": "OccurrenceCritical",
@@ -53,8 +53,8 @@ TIPO_DOMINIO = {
     "mensagem_motorista_respondida": "DriverMessageAnswered",
     "motorista_offline": "DriverOffline",
     "chamada_twilio_falhou": "TwilioCallFailed",
-    "chamada_agora_iniciada": "AgoraFallbackStarted",
-    "chamada_agora_atendida": "AgoraFallbackAnswered",
+    "chamada_livekit_iniciada": "LiveKitFallbackStarted",
+    "chamada_livekit_atendida": "LiveKitFallbackAnswered",
     "chamada_sem_resposta": "AgentCallNoAnswer",
     "escalada_supervisor": "SupervisorEscalated",
     "arquivo_adicionado": "TripFileAdded",
@@ -78,7 +78,7 @@ TIPO_DOMINIO = {
     "fala_recebedor": "VoiceTranscript",
     "fala_agente": "VoiceTranscript",
 }
-FONTE = {"arquivo_adicionado": "cco", "rota_publicada": "cco", "rota_atribuida": "cco", "fala_motorista": "driver", "fala_recebedor": "agent", "fala_agente": "agent", "task_confirmada": "cco",
+FONTE = {"arquivo_adicionado": "cco", "rota_publicada": "cco", "rota_atribuida": "cco", "rota_cancelada": "cco", "fala_motorista": "driver", "fala_recebedor": "agent", "fala_agente": "agent", "task_confirmada": "cco",
          "pedido_central": "cco", "aproximacao": "system", "chegada": "system", "retirada_detectada": "system"}
 
 
@@ -122,18 +122,21 @@ class AgentStop(BaseModel):
 
 
 @router.post("/agent/start")
-async def agent_start(body: AgentStart = AgentStart(), ct=Depends(c)):
+async def agent_start(body: AgentStart = AgentStart(), ct=Depends(c), usuario=Depends(exigir_login)):
+    rid = body.rota_id or _rota_id(body.tripId)
+    verificar_acesso_rota(ct, usuario, rid)
     try:
-        sa = await sessoes.iniciar_motorista(ct, body.rota_id or _rota_id(body.tripId))
+        sa = await sessoes.iniciar_motorista(ct, rid)
     except Exception as e:  # noqa: BLE001
         raise erro_http(e)
-    return {"sessionId": sa.id, "agentId": sa.agent_id, "agentUid": sa.agent_uid, "appId": ct.settings.agora_app_id,
-            "channel": sa.canal, "uid": sa.user_uid, "token": tokens.token_cliente(ct.settings, sa.canal, sa.user_uid),
+    return {"sessionId": sa.id, "agentDispatchId": sa.agent_id,
+            "livekitURL": ct.settings.livekit_url, "room": sa.canal,
+            "identity": sessoes.identidade_usuario(sa), "token": sessoes.token_usuario(ct, sa),
             "status": sa.status, "tripId": str(sa.rota_id)}
 
 
 @router.post("/agent/stop")
-async def agent_stop(body: AgentStop, ct=Depends(c)):
+async def agent_stop(body: AgentStop, ct=Depends(c), usuario=Depends(exigir_login)):
     sid = body.sessionId
     if sid is None and body.agentId:
         with sessao() as s:
@@ -141,6 +144,7 @@ async def agent_stop(body: AgentStop, ct=Depends(c)):
         sid = sa.id if sa else None
     if sid is None:
         raise erro_http(consultas.NaoEncontrado("sessão não existe"))
+    verificar_acesso_sessao(ct, usuario, sid)
     try:
         sa = await sessoes.encerrar(ct, sid)
     except Exception as e:  # noqa: BLE001
@@ -154,15 +158,16 @@ class CallReceiver(BaseModel):
 
 
 @router.post("/call/receiver")
-async def call_receiver(body: CallReceiver = CallReceiver(), ct=Depends(c)):
+async def call_receiver(body: CallReceiver = CallReceiver(), ct=Depends(c), usuario=Depends(exigir_login)):
     rid = _rota_id(body.tripId)
+    verificar_acesso_rota(ct, usuario, rid)
     limitar_ligacao(ct, rid)
     t = consultas.ultima_task(rid)
     try:
         lig = await ligacoes.ligar(ct, rid, body.reason, t.id if t else None)
     except Exception as e:  # noqa: BLE001
         raise erro_http(e)
-    return {"callId": lig.id, "channel": lig.canal, "mode": lig.modo, "status": lig.status, "to": lig.numero,
+    return {"callId": lig.id, "room": lig.canal, "mode": lig.modo, "status": lig.status, "to": lig.numero,
             "receiverPage": f"/recebedor?ligacao={lig.id}" if lig.modo == "rtc" else None}
 
 
@@ -201,9 +206,10 @@ async def _aplicar(ct, rid: int, e: DomainEventIn) -> None:
 
 
 @router.post("/events")
-async def post_event(e: DomainEventIn, ct=Depends(c)):
+async def post_event(e: DomainEventIn, ct=Depends(c), usuario=Depends(exigir_login)):
     """Recebe o outbox do app. Idempotente por idempotencyKey: repetido devolve 409 (o app trata como enviado)."""
     rid = _rota_id(e.tripId)
+    verificar_acesso_rota(ct, usuario, rid)
     try:
         with sessao() as s:
             ev = Evento(rota_id=rid, tipo=TipoEvento.EVENTO_APP, mensagem=f"Evento do app: {e.type}",
@@ -245,7 +251,7 @@ def api_route(tripId: Optional[str] = None, driverId: Optional[int] = None):
         "receiver": {"company": r.recebedor_empresa, "name": r.recebedor_nome, "phone": r.recebedor_telefone_e164},
         "driverId": r.motorista_id, "assignedAt": serial(r.atribuida_em) if r.atribuida_em else None,
         "position": {"lat": r.ultima_lat, "lng": r.ultima_lng, "distanceM": r.distancia_m, "etaMin": r.eta_min},
-        "channel": sessoes.canal_motorista(r.id), "driverUid": sessoes.UID_MOTORISTA, "agentUid": sessoes.UID_AGENTE_MOTORISTA,
+        "room": sessoes.canal_motorista(r.id),
     }
 
 

@@ -208,9 +208,9 @@ async def responder(c, chamado_id: int, resposta: str, respondido_por: str = "CC
         _fonte="cco",
     )
     c.eventos.publicar("chamado", {"chamado": chamado.model_dump()}, chamado.rota_id)
-    from .sessoes import VozAgora
+    from .sessoes import VozLiveKit
 
-    await VozAgora(c).falar_motorista(chamado.rota_id, f"O CCO respondeu: {texto}", prioridade="INTERRUPT")
+    await VozLiveKit(c).falar_motorista(chamado.rota_id, f"O CCO respondeu: {texto}", prioridade="INTERRUPT")
     return chamado
 
 
@@ -239,9 +239,9 @@ async def monitorar(c, chamado_id: int) -> None:
             max_tentativas=chamado.max_tentativas,
         )
         c.eventos.publicar("chamado", {"chamado": chamado.model_dump()}, chamado.rota_id)
-        from .sessoes import VozAgora
+        from .sessoes import VozLiveKit
 
-        await VozAgora(c).falar_motorista(
+        await VozLiveKit(c).falar_motorista(
             chamado.rota_id,
             f"Ainda não recebi uma resposta do CCO. Tentativa {tentativa} de {chamado.max_tentativas}.",
         )
@@ -261,9 +261,9 @@ async def monitorar(c, chamado_id: int) -> None:
         tentativas=chamado.tentativas,
     )
     c.eventos.publicar("chamado", {"chamado": chamado.model_dump()}, chamado.rota_id)
-    from .sessoes import VozAgora
+    from .sessoes import VozLiveKit
 
-    await VozAgora(c).falar_motorista(
+    await VozLiveKit(c).falar_motorista(
         chamado.rota_id,
         "O CCO não respondeu após cinco tentativas. Vou deixar o chamado registrado para acompanhamento.",
     )

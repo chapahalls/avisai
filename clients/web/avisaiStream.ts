@@ -107,8 +107,8 @@ export class AvisaiStream {
     return this.req("POST", `/rotas/${rotaId}/reset`);
   }
 
-  /** Token para "ouvir ao vivo" com o Web SDK (uid 2001, sem publicar). */
-  token(canal: string, uid = 2001): Promise<{ app_id: string; channel: string; uid: number; token: string }> {
-    return this.req("GET", `/token?channel=${encodeURIComponent(canal)}&uid=${uid}`);
+  /** Token para uma identidade da sala LiveKit. */
+  token(room: string, identity: string): Promise<{ url: string; room: string; identity: string; token: string }> {
+    return this.req("GET", `/token?room=${encodeURIComponent(room)}&identity=${encodeURIComponent(identity)}`);
   }
 }

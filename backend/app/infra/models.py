@@ -60,12 +60,20 @@ class Rota(SQLModel, table=True):
     origem_nome: str
     origem_lat: float
     origem_lng: float
+    # Endereço digitado pelo CCO e o vínculo da coordenada: {fonte: geocodificacao|manual, provedor, id, endereco}.
+    origem_endereco: str = ""
+    origem_geo: dict = Field(default_factory=dict, sa_column=Column(JSON))
     destino_nome: str
     destino_lat: float
     destino_lng: float
+    destino_endereco: str = ""
+    destino_geo: dict = Field(default_factory=dict, sa_column=Column(JSON))
     trajeto: list = Field(default_factory=list, sa_column=Column(JSON))  # [[lat, lng], ...]
-    # planejada | em_transito | aproximando | no_destino | descarregada
+    # publicada | planejada | na_origem | em_transito | aproximando | no_destino | descarregada | cancelada
     status: str = "planejada"
+    cancelada_em: Optional[datetime] = None
+    cancelada_por: Optional[str] = None
+    cancelamento_motivo: Optional[str] = None
     placa: str = ""
     nota_fiscal: str = ""
     carga_descricao: str = ""
@@ -210,14 +218,12 @@ class Estadia(SQLModel, table=True):
 
 
 class SessaoAgente(SQLModel, table=True):
-    """Uma instância de agente ConvoAI (motorista ou recebedor)."""
+    """Uma instância de agente LiveKit (motorista, recebedor ou operador)."""
     id: Optional[int] = Field(default=None, primary_key=True)
     rota_id: int = Field(foreign_key="rota.id")
     papel: str = "motorista"  # motorista | recebedor
     ligacao_id: Optional[int] = Field(default=None, foreign_key="ligacaorecebedor.id")
     canal: str
-    agent_uid: int
-    user_uid: int
     agent_id: Optional[str] = None
     status: str = "iniciando"  # iniciando | ativa | encerrada | falhou
     llm_mode: str = "custom"
@@ -285,11 +291,11 @@ class ChamadaAgente(SQLModel, table=True):
     rota_id: int = Field(foreign_key="rota.id", index=True)
     destino: str  # operador | supervisor | motorista
     motivo: str
-    # iniciada | twilio_atendida | agora_tocando | atendida | sem_resposta | escalada | falhou
+    # iniciada | twilio_atendida | livekit_tocando | atendida | sem_resposta | escalada | falhou
     status: str = "iniciada"
     twilio_sid: Optional[str] = None
     twilio_resultado: Optional[str] = None
-    agora_canal: Optional[str] = None
+    livekit_room: Optional[str] = None
     sessao_id: Optional[int] = Field(default=None, foreign_key="sessaoagente.id")
     iniciada_em: datetime = Field(default_factory=agora)
     atendida_em: Optional[datetime] = None

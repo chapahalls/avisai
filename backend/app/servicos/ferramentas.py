@@ -3,6 +3,7 @@ import logging
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
+from ..dominio import contingencia
 from ..dominio.enums import Papel
 from ..infra.models import SessaoAgente
 from . import chamadas_agente, chamados, central, ligacoes, mensagens, reportes, tasks
@@ -80,6 +81,10 @@ async def _resposta_recebedor(c, sa: SessaoAgente, args: dict, fala: str) -> dic
 
 
 async def _retirada(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    # Fala gravada sem sinal: não há conversa para confirmar a pendência da rota. Só vale
+    # se a própria fala disser que pegou a carga (ex.: "a carga tá inteira" não é retirada).
+    if sa.canal.startswith("offline-") and not contingencia.fala_pede_retirada(fala):
+        return {"ok": False, "erro": "a fala gravada sem sinal não fala em retirada; não registre"}
     geo = await tasks.confirmar_retirada(c, sa.rota_id, transcricao=fala or args.get("observacao"))
     return {"ok": True, "validado": geo.status == "validado",
             "proximo": "peça o relatório inicial: como está o caminhão e a carga coletada"}
@@ -162,7 +167,7 @@ async def _ligar(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
         iniciado_por="llm",
     )
     return {
-        "ok": chamada.status in ("twilio_atendida", "agora_tocando", "atendida"),
+        "ok": chamada.status in ("twilio_atendida", "livekit_tocando", "atendida"),
         "chamada_id": chamada.id,
         "status": chamada.status,
         "twilio_resultado": chamada.twilio_resultado,
@@ -239,7 +244,7 @@ REGISTRO: dict[str, Ferramenta] = {
          "required": ["resposta"]},
         _responder_mensagem_motorista),
     "ligar": Ferramenta(
-        Papel.MOTORISTA, "Liga para um humano quando o motorista pedir ajuda; usa Twilio e fallback Agora RTC auditáveis.",
+        Papel.MOTORISTA, "Liga para um humano quando o motorista pedir ajuda; usa Twilio e fallback LiveKit RTC auditáveis.",
         {"type": "object", "properties": {
             "destino": {"type": "string", "enum": ["operador", "supervisor", "motorista"]},
             "motivo": {"type": "string", "description": "Motivo fiel e curto da ligação."}},

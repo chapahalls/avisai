@@ -1,6 +1,7 @@
-"""Fluxos CCO em tempo real: alerta, decisão, mensagem e cascata Twilio→Agora."""
+"""Fluxos CCO em tempo real: alerta, decisão, mensagem e fallback Twilio→LiveKit."""
 import json
 
+import jwt
 from sqlmodel import select
 
 from app.infra.db import sessao
@@ -42,7 +43,7 @@ async def test_fala_do_motorista_publica_alerta_critico_e_decisao(client, fake_l
     assert decisao.dados["decisao"]["executou"] == "Publicou alerta crítico em tempo real."
 
 
-async def test_tool_ligar_registra_falha_twilio_e_fallback_agora_atendivel(client, fake_llm):
+async def test_tool_ligar_registra_falha_twilio_e_fallback_livekit_atendivel(client, fake_llm):
     sid = await _sessao(client)
     fake_llm.respostas = [
         tool_call("ligar", '{"destino":"operador","motivo":"pneu furado na BR-381"}'),
@@ -54,25 +55,28 @@ async def test_tool_ligar_registra_falha_twilio_e_fallback_agora_atendivel(clien
     assert response.status_code == 200
     with sessao() as s:
         chamada = s.exec(select(ChamadaAgente)).one()
-    assert chamada.status == "agora_tocando"
+    assert chamada.status == "livekit_tocando"
     assert chamada.twilio_resultado == "Twilio não configurado"
-    assert chamada.agora_canal == f"avisai-operador-{chamada.id}"
+    assert chamada.livekit_room == f"rodar-operador-{chamada.id}"
     assert "Twilio falhou" in eventos("decisao_agente")[-2].dados["decisao"]["percebeu"]
 
     pendente = (await client.get("/operador/chamadas/atual")).json()["chamada"]
-    assert pendente["id"] == chamada.id and pendente["token"].startswith("007")
+    assert pendente["id"] == chamada.id
+    # Token LiveKit (JWT) para a sala da chamada, assinado com a chave do fixture `settings`.
+    claims = jwt.decode(pendente["token"], "test-secret", algorithms=["HS256"])
+    assert claims["iss"] == "test-key" and claims["video"]["room"] == chamada.livekit_room
     atendida = await client.post(f"/operador/chamadas/{chamada.id}/atender")
     assert atendida.status_code == 200 and atendida.json()["status"] == "atendida"
 
 
-async def test_mensagem_cco_e_falada_e_resposta_permanece_na_thread(client, fake_llm, fake_agora):
+async def test_mensagem_cco_e_falada_e_resposta_permanece_na_thread(client, fake_llm, fake_livekit):
     sid = await _sessao(client)
     enviada = await client.post(
         "/rotas/1/mensagens",
         json={"remetente": "Ana", "texto": "Siga para a doca 4 quando liberarem."},
     )
     assert enviada.status_code == 200 and enviada.json()["status"] == "falada"
-    assert "Você recebeu uma mensagem de Ana do CCO" in fake_agora.falas()[-1]
+    assert "Você recebeu uma mensagem de Ana do CCO" in fake_livekit.falas()[-1]
 
     fake_llm.respostas = [
         tool_call("responder_mensagem_motorista", json.dumps({"resposta": "Entendido, aguardando a liberação."})),

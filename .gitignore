@@ -8,3 +8,4 @@ __pycache__/
 backend/.venv/
 .cloudflared/
 .pytest_cache/
+*.swp

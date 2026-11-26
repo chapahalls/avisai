@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AvisAI · teste do motorista</title>
-<script src="https://cdn.jsdelivr.net/npm/agora-rtc-sdk-ng@4.23.4/AgoraRTC_N-production.js"></script>
-<script src="/static/agora-cliente.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<script src="/static/livekit-cliente.js"></script>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; background: #f6f6f4; color: #1b1b1b; }
   button { font-size: 16px; padding: 10px 16px; margin: 4px 4px 4px 0; border-radius: 8px; border: 1px solid #999; background: #fff; cursor: pointer; }
@@ -41,16 +41,16 @@ async function api(m, url, body) {
   return j;
 }
 async function iniciar() {
-  if (AvisaiRTC.client) await encerrar();  // evita dois clientes/agentes no mesmo canal
+  if (AvisaiLiveKit.room) await encerrar();  // evita duas sessões abertas na mesma rota
   const s = await api("POST", "/sessions", { rota_id: Number(rota()) });
   sessaoId = s.id;
-  log(`sessão ${s.id} ativa, agent_id ${s.agent_id}`);
+  log(`sessão ${s.id} ativa, dispatch ${s.agent_id}`);
   try {
-    await AvisaiRTC.entrar({ app_id: s.app_id, channel: s.canal, uid: s.user_uid, token: s.token }, log);
+    await AvisaiLiveKit.entrar({ url: s.livekit_url, token: s.token }, log);
   } catch (e) { log(`ERRO ao entrar: ${e && (e.message || e)}`); }
 }
 async function encerrar() {
-  await AvisaiRTC.sair(log);
+  await AvisaiLiveKit.sair(log);
   if (sessaoId) await api("DELETE", `/sessions/${sessaoId}`);
   sessaoId = null;
 }

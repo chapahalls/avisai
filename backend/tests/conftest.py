@@ -11,10 +11,7 @@ from app.infra.db import engine
 from app.infra.eventos import Eventos
 from app.infra.settings import Settings
 from app.seed import seed
-from tests.fakes import FakeAgora, FakeLLM, RelogioFixo
-
-APP_ID = "0123456789abcdef0123456789abcdef"
-CERT = "fedcba9876543210fedcba9876543210"
+from tests.fakes import FakeGeocodificador, FakeLiveKit, FakeLLM, FakeTranscritor, RelogioFixo
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -45,10 +42,9 @@ def _limpar_limites():
 @pytest.fixture
 def settings() -> Settings:
     return Settings(
-        agora_app_id=APP_ID,
-        agora_app_certificate=CERT,
-        agora_customer_id="cid",
-        agora_customer_secret="csecret",
+        livekit_url="wss://livekit.test",
+        livekit_api_key="test-key",
+        livekit_api_secret="test-secret",
         public_url="https://avisai.test",
         llm_api_key="sk-test",
         llm_shared_secret="segredo",
@@ -59,12 +55,14 @@ def settings() -> Settings:
         ligacao_poll_s=0.05,
         encerrar_ligacao_apos_s=0.01,
         estadia_aceleracao=1,
+        # Os testes de fluxo exercitam regras de negócio; tests/api/test_auth.py liga o login e testa o acesso.
+        auth_obrigatoria=False,
     )
 
 
 @pytest.fixture
-def fake_agora() -> FakeAgora:
-    return FakeAgora()
+def fake_livekit() -> FakeLiveKit:
+    return FakeLiveKit()
 
 
 @pytest.fixture
@@ -73,13 +71,25 @@ def fake_llm() -> FakeLLM:
 
 
 @pytest.fixture
+def fake_transcritor() -> FakeTranscritor:
+    return FakeTranscritor()
+
+
+@pytest.fixture
+def fake_geocodificador() -> FakeGeocodificador:
+    return FakeGeocodificador()
+
+
+@pytest.fixture
 def relogio() -> RelogioFixo:
     return RelogioFixo()
 
 
 @pytest.fixture
-async def container(settings, fake_agora, fake_llm, relogio):
-    c = ct.Container(settings=settings, agora=fake_agora, llm=fake_llm, relogio=relogio, eventos=Eventos())
+async def container(settings, fake_livekit, fake_llm, fake_transcritor, fake_geocodificador, relogio, tmp_path):
+    settings.falas_offline_dir = str(tmp_path / "falas_offline")
+    c = ct.Container(settings=settings, livekit=fake_livekit, llm=fake_llm, transcritor=fake_transcritor,
+                     geocodificador=fake_geocodificador, relogio=relogio, eventos=Eventos())
     ct.definir(c)
     yield c
     pendentes = [t for t in c.tarefas.values() if not t.done()]

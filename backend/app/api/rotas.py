@@ -6,16 +6,15 @@ from ..infra.db import sessao
 from ..infra.models import (ChamadaAgente, ChamadoCCO, Estadia, Evento, EventoGeo, LigacaoRecebedor, MensagemMotorista,
                             Motorista, Ocorrencia, Reporte, Rota, SessaoAgente, SolicitacaoCentral, TaskCCO)
 from ..servicos import central, consultas, mensagens, publicacao, rotas, sessoes, tasks
-from .deps import c, erro_http, exigir_cco
-from .schemas import Atribuir, Descarga, NovaMensagemMotorista, NovaRota, NovaSolicitacao, NovoMotorista, Posicao, PosicaoOut
+from .deps import c, erro_http, exigir_acesso_rota, exigir_cco
+from .schemas import Atribuir, Cancelar, Descarga, NovaMensagemMotorista, NovaRota, NovaSolicitacao, NovoMotorista, Posicao, PosicaoOut
 
 router = APIRouter(tags=["rotas"])
 
 
 def rota_publica(r: Rota, com_trajeto: bool = False) -> dict:
     d = r.model_dump(exclude=None if com_trajeto else {"trajeto"})
-    d.update(canal_motorista=sessoes.canal_motorista(r.id), uid_motorista=sessoes.UID_MOTORISTA,
-             uid_cco=sessoes.UID_CCO, uid_agente=sessoes.UID_AGENTE_MOTORISTA)
+    d.update(canal_motorista=sessoes.canal_motorista(r.id))
     with sessao() as s:
         m = s.get(Motorista, r.motorista_id) if r.motorista_id else None
     d["motorista_nome"] = m.nome if m else None
@@ -36,7 +35,7 @@ def obter(rota_id: int):
         raise erro_http(e)
 
 
-@router.post("/rotas/{rota_id}/posicao", response_model=PosicaoOut)
+@router.post("/rotas/{rota_id}/posicao", response_model=PosicaoOut, dependencies=[Depends(exigir_acesso_rota)])
 async def posicao(rota_id: int, body: Posicao, ct=Depends(c)):
     """GPS do celular (fonte=celular, dispara as geocercas) ou do rastreador do caminhão (fonte=rastreador, prova)."""
     try:
@@ -45,7 +44,7 @@ async def posicao(rota_id: int, body: Posicao, ct=Depends(c)):
         raise erro_http(e)
 
 
-@router.post("/rotas/{rota_id}/chegada")
+@router.post("/rotas/{rota_id}/chegada", dependencies=[Depends(exigir_acesso_rota)])
 async def chegada(rota_id: int, ct=Depends(c)):
     """Chegada manual (atalho de demo). Idempotente."""
     try:
@@ -54,7 +53,7 @@ async def chegada(rota_id: int, ct=Depends(c)):
         raise erro_http(e)
 
 
-@router.post("/rotas/{rota_id}/descarga")
+@router.post("/rotas/{rota_id}/descarga", dependencies=[Depends(exigir_acesso_rota)])
 async def descarga(rota_id: int, body: Descarga = Descarga(), ct=Depends(c)):
     """CCO confirma a descarga: encerra estadia e Task."""
     try:
@@ -63,7 +62,7 @@ async def descarga(rota_id: int, body: Descarga = Descarga(), ct=Depends(c)):
         raise erro_http(e)
 
 
-@router.post("/rotas/{rota_id}/reset")
+@router.post("/rotas/{rota_id}/reset", dependencies=[Depends(exigir_acesso_rota)])
 async def reset(rota_id: int, ct=Depends(c)):
     """Volta a rota ao início para repetir a demo."""
     for t in list(ct.tarefas.values()):
@@ -96,7 +95,7 @@ async def reset(rota_id: int, ct=Depends(c)):
     return {"ok": True}
 
 
-@router.post("/rotas/{rota_id}/solicitacoes")
+@router.post("/rotas/{rota_id}/solicitacoes", dependencies=[Depends(exigir_cco)])
 async def nova_solicitacao(rota_id: int, body: NovaSolicitacao, ct=Depends(c)):
     """Pedido da central: o agente pergunta ao motorista e a resposta volta estruturada."""
     try:
@@ -115,7 +114,7 @@ def mensagens_motorista(rota_id: int):
     return [x.model_dump() for x in mensagens.listar(rota_id)]
 
 
-@router.post("/rotas/{rota_id}/mensagens")
+@router.post("/rotas/{rota_id}/mensagens", dependencies=[Depends(exigir_cco)])
 async def enviar_mensagem_motorista(rota_id: int, body: NovaMensagemMotorista, ct=Depends(c)):
     """Ação da CCO: a mesma função exposta ao LLM fala e audita a mensagem."""
     try:
@@ -148,6 +147,16 @@ async def atribuir_rota(rota_id: int, body: Atribuir, ct=Depends(c)):
     """Atribui a rota a um motorista: gera RouteAssigned e o app (WS ?motorista_id=) recebe na hora."""
     try:
         r = await publicacao.atribuir(ct, rota_id, body.motorista_id)
+    except Exception as e:  # noqa: BLE001
+        raise erro_http(e)
+    return rota_publica(r)
+
+
+@router.post("/rotas/{rota_id}/cancelar", dependencies=[Depends(exigir_cco)])
+async def cancelar_rota(rota_id: int, body: Cancelar, ct=Depends(c)):
+    """Cancela a viagem antes da chegada ao destino. 409 quando já chegou, foi descarregada ou cancelada."""
+    try:
+        r = await publicacao.cancelar(ct, rota_id, body.motivo, body.por)
     except Exception as e:  # noqa: BLE001
         raise erro_http(e)
     return rota_publica(r)

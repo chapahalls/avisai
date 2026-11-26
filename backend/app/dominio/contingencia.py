@@ -51,6 +51,18 @@ def _tem(t: str, *padroes: str) -> bool:
     return any(re.search(p, t) for p in padroes)
 
 
+RETIRADA_DITA = (
+    r"\b(inici|comec|sair|partir)\w*(?:\s+a)?\s+(?:viagem|rota)\b", r"\bpeguei a (carga|mercadoria)\b",
+    r"\bcarreguei\b", r"\bretirei\b", r"\bcoletei\b", r"\b(ja )?(to|tou|estou|ta|esta) carregad",
+    r"\bcarga (ta |esta )?(no caminhao|carregada)\b", r"\bretirada\b", r"\b(partiu|bora|pe na estrada)\b",
+)
+
+
+def fala_pede_retirada(fala: str) -> bool:
+    """A própria fala diz que pegou a carga ou começou a viagem (sem depender de pergunta anterior)."""
+    return _tem(normalizar(fala or ""), *RETIRADA_DITA)
+
+
 PERGUNTA = (r"\?", r"\bquanto", r"\bqual\b", r"\bquando\b", r"\bcade\b", r"\balguma noticia", r"\brespondeu",
             r"\bprevisao\b", r"\bja deu\b", r"\bcomo (ta|esta)\b")
 

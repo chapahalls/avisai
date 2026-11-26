@@ -29,11 +29,28 @@ services:
     volumes:
       - ./backend:/app
       - ./backend/data/arquivos:/app/data/arquivos
+      - ./backend/data/falas_offline:/app/data/falas_offline
       - ./scripts:/scripts
     command: sh -c "alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --timeout-graceful-shutdown 2"
     depends_on:
       db:
         condition: service_healthy
+
+  voice-agent:
+    build: ./backend
+    user: "${UID:-1000}:${GID:-1000}"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://avisai:avisai@db:5432/avisai
+      LIVEKIT_LLM_URL: http://api:8000/v1
+    volumes:
+      - ./backend:/app
+    command: python -m app.voice_agent dev
+    depends_on:
+      api:
+        condition: service_started
 
   tunnel:
     image: cloudflare/cloudflared:2024.12.2

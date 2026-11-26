@@ -95,28 +95,28 @@ def _avisos(assinatura) -> list[dict]:
 
 
 async def test_aviso_sem_conversa_vai_pro_app(client, container):
-    from app.servicos.sessoes import VozAgora
+    from app.servicos.sessoes import VozLiveKit
 
     ws = container.eventos.assinar(rota_id=1)
-    entregue = await VozAgora(container).falar_motorista(1, "A central pergunta: a carga está lacrada?")
+    entregue = await VozLiveKit(container).falar_motorista(1, "A central pergunta: a carga está lacrada?")
     assert entregue is False
     [aviso] = _avisos(ws)
     assert aviso["texto"] == "A central pergunta: a carga está lacrada?" and aviso["pede_resposta"] is True
-    await VozAgora(container).falar_motorista(1, "Faltam uns 15 minutos.")
+    await VozLiveKit(container).falar_motorista(1, "Faltam uns 15 minutos.")
     assert _avisos(ws)[0]["pede_resposta"] is False
 
 
 async def test_aviso_com_conversa_aberta_vai_pela_voz(client, container):
-    from app.servicos.sessoes import VozAgora
+    from app.servicos.sessoes import VozLiveKit
 
     await _sessao(client)
     ws = container.eventos.assinar(rota_id=1)
-    assert await VozAgora(container).falar_motorista(1, "Faltam uns 15 minutos.") is True
+    assert await VozLiveKit(container).falar_motorista(1, "Faltam uns 15 minutos.") is True
     assert _avisos(ws) == []
 
 
 async def test_sem_llm_navega_liga_gps_e_repete(client, container):
-    from app.servicos.sessoes import VozAgora
+    from app.servicos.sessoes import VozLiveKit
 
     container.settings.llm_api_key = ""
     sid = await _sessao(client)
@@ -125,7 +125,7 @@ async def test_sem_llm_navega_liga_gps_e_repete(client, container):
     assert "mapa" in sse(r.text)
     await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("liga o GPS"), headers=AUTH)
     assert [a["acao"] for a in _acoes(ws)] == ["open_navigation", "start_gps"]
-    await VozAgora(container).falar_motorista(1, "O CCO respondeu: pode descarregar na doca 2.")
+    await VozLiveKit(container).falar_motorista(1, "O CCO respondeu: pode descarregar na doca 2.")
     r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("repete"), headers=AUTH)
     assert "doca 2" in sse(r.text)
 

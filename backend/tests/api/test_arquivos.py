@@ -27,7 +27,7 @@ async def upload(client, content=PDF, filename="nota.pdf", mime="application/pdf
                              files={"arquivo": (filename, content, mime)}, data=data or {})
 
 
-async def test_upload_lista_download_e_evento(client, container, isolated_files, fake_agora):
+async def test_upload_lista_download_e_evento(client, container, isolated_files, fake_livekit):
     assert (await client.get("/rotas/1/arquivos")).json() == []
     response = await upload(client, data={"categoria": "nota_fiscal", "descricao": "  NF anexada  "})
     assert response.status_code == 201, response.text
@@ -51,7 +51,7 @@ async def test_upload_lista_download_e_evento(client, container, isolated_files,
     assert event["rota_id"] == 1 and event["dados"]["arquivo_id"] == item["id"]
     domain = (await client.get("/events", params={"tripId": "1"})).json()
     assert any(e["type"] == "TripFileAdded" and e["source"] == "cco" for e in domain)
-    assert fake_agora.joins == [] and fake_agora.speaks == [] and fake_agora.calls == []
+    assert fake_livekit.dispatches == [] and fake_livekit.speaks == [] and fake_livekit.dial_requests == []
 
 
 @pytest.mark.parametrize("filename,content,mime", [

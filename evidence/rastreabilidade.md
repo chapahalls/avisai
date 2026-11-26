@@ -323,3 +323,6 @@ A contagem é feita por linha. Alguns requisitos aparecem em mais de um document
 13. **AR-6.2.2: não existe "estadia cobrada".** *Sugestão:* declarar como fora do MVP ou criar `Estadia.cobrada_em/valor_cobrado`.
 14. **AR-2.2: os tipos TS em `clients/tipos.ts` estão desatualizados** (sem `DomainEvent`, `EventType` nem `pergunta_documento`). *Sugestão:* gerar a partir do `/openapi.json` e acrescentar o `EventType` do §7.
 15. **AR-9.2: falta o `check-rules.sh` (❌, baixo impacto).** *Sugestão:* script que confere `.env` fora do git, a tag de versão e as seções obrigatórias do README.
+# Registro histórico
+
+Esta matriz descreve a implementação anterior à migração da voz para LiveKit. Referências a payloads, UIDs e testes da Agora não representam o estado atual do código.

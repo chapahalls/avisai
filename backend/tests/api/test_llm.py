@@ -97,7 +97,7 @@ async def test_descarreguei_encerra_estadia_e_task(client, fake_llm):
     assert e.fim is not None and t.status == "concluida"
 
 
-async def test_recebedor_responde_doca_e_motorista_ouve(client, fake_llm, fake_agora, container):
+async def test_recebedor_responde_doca_e_motorista_ouve(client, fake_llm, fake_livekit, container):
     await _sessao(client)
     lig = await ligacoes.ligar(container, 1, "cco_sem_resposta")
     sid_rec = obter(LigacaoRecebedor, lig.id).sessao_id
@@ -111,11 +111,11 @@ async def test_recebedor_responde_doca_e_motorista_ouve(client, fake_llm, fake_a
     lig = obter(LigacaoRecebedor, lig.id)
     assert lig.status == "respondida" and lig.doca == "4"
     assert any(t["quem"] == "recebedor" for t in lig.transcricao)
-    fala = fake_agora.speaks[-1]
+    fala = fake_livekit.speaks[-1]
     assert fala["prioridade"] == "INTERRUPT" and "doca 4" in fala["texto"]
 
 
-async def test_estado_vivo_vai_para_o_llm_sem_campos_da_agora(client, fake_llm):
+async def test_estado_vivo_vai_para_o_llm_sem_campos_de_transporte(client, fake_llm):
     sid = await _sessao(client)
     await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Como tá?"), headers=AUTH)
     msgs = fake_llm.recebidas[-1]["mensagens"]
@@ -173,12 +173,12 @@ def test_lgpd_sem_audio_nem_saude():
     assert not any("audio" in c or "saude" in c for c in colunas)
 
 
-async def test_chegada_por_voz_nao_fala_duas_vezes(client, fake_llm, fake_agora):
+async def test_chegada_por_voz_nao_fala_duas_vezes(client, fake_llm, fake_livekit):
     """O próprio agente responde à fala; a fala proativa de chegada é só para GPS/manual."""
     sid = await _sessao(client)
     fake_llm.respostas = [tool_call("confirmar_chegada", "{}"), "Chegada registrada."]
     await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Cheguei"), headers=AUTH)
-    assert not any("contador de estadia" in f for f in fake_agora.falas())
+    assert not any("contador de estadia" in f for f in fake_livekit.falas())
 
 
 async def test_pergunta_sobre_a_nf_usa_ferramenta_e_registra_evento(client, fake_llm):

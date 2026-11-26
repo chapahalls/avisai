@@ -93,13 +93,14 @@ commit são removidos; um processo morto entre gravação e commit pode deixar a
 que não aparece na API. Remover órfãos exige confrontar as chaves com o banco durante manutenção.
 Downgrade da tabela não apaga o volume e deve ser acompanhado de backup.
 
-O SSO existente é mock e os endpoints operacionais não exigem sessão/token. Qualquer cliente
-com acesso à API pode listar, anexar e baixar arquivos. IDs não são controle de acesso.
-Não publicar documentos privados em um backend exposto sem implementar autorização real.
+O SSO é mock, sem senha. Com `AUTH_OBRIGATORIA=true` (padrão), listar e baixar exigem um JWT da
+central ou do motorista atribuído à rota; anexar exige um JWT da central. Com `false`, os
+endpoints ficam sem autorização e devem ser usados apenas em desenvolvimento local. IDs não são
+controle de acesso.
 
 ## Verificação
 
 `make test ARGS="tests/api/test_arquivos.py tests/api/test_publicacao_rota.py"` usa o banco
-isolado `avisai_test`, diretórios temporários e fakes; não chama voz/Agora. Os cenários cobrem
+isolado `avisai_test`, diretórios temporários e fakes; não chamam serviços de voz. Os cenários cobrem
 upload/lista/download, formatos, nomes com traversal, chaves/symlinks adulterados, limites,
 multipart sem Content-Length, duplicidade de nomes, 404, reset e entrega pelo stream móvel.

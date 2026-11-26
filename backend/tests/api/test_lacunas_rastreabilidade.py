@@ -27,11 +27,11 @@ def _chegada():
 
 # ---------- 1. confirmação da chegada por voz ----------
 
-async def test_gps_detecta_chegada_e_agente_pede_confirmacao(client, fake_agora):
+async def test_gps_detecta_chegada_e_agente_pede_confirmacao(client, fake_livekit):
     await client.post("/sessions", json={"rota_id": 1})
     await client.post("/rotas/1/posicao", json={**DESTINO, "fonte": "rastreador"})
     await client.post("/rotas/1/posicao", json=DESTINO)
-    assert any("Confirma a chegada" in f for f in fake_agora.falas())
+    assert any("Confirma a chegada" in f for f in fake_livekit.falas())
     assert _chegada().status == "nao_validado"  # só GPS ainda não é a prova completa
 
 
@@ -103,7 +103,7 @@ async def test_capacidade_menor_que_a_carga_e_recusada(client):
 
 # ---------- 3. atraso avisa o recebedor ----------
 
-async def test_atraso_na_estrada_liga_para_o_recebedor_com_novo_horario(client, fake_llm, fake_agora):
+async def test_atraso_na_estrada_liga_para_o_recebedor_com_novo_horario(client, fake_llm, fake_livekit):
     sid = (await client.post("/sessions", json={"rota_id": 1})).json()["id"]
     await client.post("/rotas/1/posicao", json=NO_CAMINHO)
     fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"atraso","descricao":"trânsito parado, uns 40 min de atraso"}'),
@@ -115,7 +115,7 @@ async def test_atraso_na_estrada_liga_para_o_recebedor_com_novo_horario(client, 
     assert lig.motivo == "atraso"
     aviso = eventos("aviso_recebedor")[-1]
     assert aviso.dados["motivo"] == "atraso"
-    prompt = fake_agora.joins[-1]["properties"]["llm"]["system_messages"][0]["content"]
+    prompt = fake_livekit.dispatches[-1]["metadata"]["instructions"]
     assert "atras" in prompt and "40 min" in prompt
 
 
