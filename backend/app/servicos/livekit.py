@@ -11,6 +11,7 @@ from typing import Optional
 import jwt
 
 from ..infra.settings import Settings
+from .sessoes import PREFIXOS_RESERVADOS
 
 SALA_VALIDA = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -32,6 +33,11 @@ def sala_para(identidade: str, sala: Optional[str]) -> str:
     sala = sala.strip()
     if not SALA_VALIDA.match(sala):
         raise ValueError("Sala inválida: use letras, números, _ ou - (até 64)")
+    if sala.startswith(PREFIXOS_RESERVADOS):
+        # Essas salas pertencem a sessões reais (motorista, recebedor, operador) com agente e
+        # dados de rota; só o dono da rota ou a central recebem token para elas (GET /token).
+        # O token de demo não pode abrir nem entrar nessas salas.
+        raise ValueError("Sala reservada a sessões do backend; peça o token em /token com login do dono da rota")
     return sala
 
 

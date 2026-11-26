@@ -30,7 +30,7 @@ def fala_offline():
     return evs[0] if evs else None
 
 
-async def test_fala_offline_vira_ocorrencia_e_aviso(client, fake_llm, fake_transcritor):
+async def test_fala_offline_vira_ocorrencia_e_aviso(client, container, fake_llm, fake_transcritor):
     fake_transcritor.texto = "Furou o pneu no km 230 da BR-381"
     fake_llm.respostas = [
         tool_call("registrar_ocorrencia", '{"tipo":"avaria","descricao":"pneu furado","km":230,"rodovia":"BR-381"}'),
@@ -42,6 +42,8 @@ async def test_fala_offline_vira_ocorrencia_e_aviso(client, fake_llm, fake_trans
     ev = await esperar(lambda: (e := fala_offline()) and e.dados.get("status") == "processada" and e)
     assert ev.source == "driver" and ev.mensagem == "Mensagem de voz gravada sem sinal às 10h50"
     assert ev.dados["transcricao"] == "Furou o pneu no km 230 da BR-381"
+    # Transcrito com sucesso: o áudio é apagado, só a transcrição fica registrada.
+    assert not (Path(container.settings.falas_offline_dir) / ev.dados["arquivo"]).exists()
     with sessao() as s:
         o = s.exec(select(Ocorrencia)).one()
     assert o.tipo == "avaria" and o.km == 230
@@ -57,9 +59,11 @@ async def test_mesma_fala_duas_vezes_devolve_409_e_nao_duplica(client, container
     assert (await enviar(client)).status_code == 201
     r = await enviar(client)
     assert r.status_code == 409 and r.json()["status"] == "duplicate"
-    await esperar(lambda: (e := fala_offline()) and e.dados.get("status") == "processada")
+    await esperar(lambda: (e := fala_offline()) and e.dados.get("status") == "processada" and e)
     assert len(eventos("fala_offline")) == 1 and len(fake_transcritor.recebidos) == 1
-    assert len(list(Path(container.settings.falas_offline_dir).iterdir())) == 1
+    # Transcrito com sucesso, o único áudio gravado é apagado: a chave repetida não deixou um
+    # segundo arquivo (que, não tendo evento associado, nunca seria processado nem removido).
+    assert not list(Path(container.settings.falas_offline_dir).iterdir())
 
 
 async def test_formato_desconhecido_e_recusado(client):
@@ -80,11 +84,13 @@ async def test_sem_transcritor_guarda_o_audio_sem_texto(client, container):
     assert (Path(container.settings.falas_offline_dir) / ev.dados["arquivo"]).exists()
 
 
-async def test_falha_na_transcricao_fica_registrada(client, fake_transcritor, fake_llm):
+async def test_falha_na_transcricao_fica_registrada(client, container, fake_transcritor, fake_llm):
     fake_transcritor.falhar = True
     await enviar(client)
     ev = await esperar(lambda: (e := fala_offline()) and e.dados.get("status") == "erro_transcricao" and e)
     assert "STT fora do ar" in ev.dados["erro"] and not fake_llm.recebidas
+    # Falhou a transcrição: o áudio é mantido em disco para diagnóstico.
+    assert (Path(container.settings.falas_offline_dir) / ev.dados["arquivo"]).exists()
 
 
 async def test_horario_no_futuro_vira_horario_de_chegada(client):

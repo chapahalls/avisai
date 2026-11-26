@@ -71,6 +71,8 @@ Os frontends devem conservar essa distinção. Não use um campo ausente da API 
 - **Serviços externos:**
   - LiveKit Cloud (URL, API key e secret; Inference para Gemini Live);
   - LLM compatível com OpenAI (opcional para os endpoints de conversa e avaliação; a voz usa o modelo LiveKit configurado);
+  - OpenAI Audio Transcriptions (reconhecimento de fala), só para transcrever falas offline gravadas sem sinal (`POST /rotas/{id}/falas-offline`); a conversa de voz em tempo real não passa por essa API, só pelo LiveKit Inference;
+  - Nominatim (OpenStreetMap), para a busca de endereço no cadastro de rota (`GET /geocodificacao`); opcional, pode ser desligado (`GEOCODIFICACAO_PROVEDOR=`) ou trocado por instância própria;
   - Twilio, só para a ligação telefônica real, que é opcional.
 
 ## Como rodar (clone limpo, só Docker)
@@ -177,7 +179,7 @@ Os fronts podem seguir o contrato do doc sem mudança. A api também responde na
 | `GET /token?room&identity` | token LiveKit para uma identidade autorizada |
 | `POST /call/receiver` `{tripId, reason}` | liga para o recebedor (plano B ou plano A) |
 | `POST /events` | **outbox idempotente**: `DomainEvent` com `idempotencyKey` (200 na primeira vez, 409 se repetido). Aplica `ArrivalRegistered`, `PickupConfirmed`, `OccurrenceCreated`, `UnloadConfirmed` e `ReportSubmitted` |
-| `POST /rotas/{id}/falas-offline` | **fala gravada sem sinal** (multipart: `audio` WAV/M4A, `idempotencyKey`, `faladoEm`, `duracaoMs`). 201 na primeira vez, 409 se repetida. Em segundo plano: transcreve (`STT_MODEL`, mesma chave do LLM), passa ao agente do motorista com o horário em que foi falada e manda a resposta como `aviso_motorista`. Uma fala por vez por rota, na ordem de chegada. Evento `fala_offline` com `status` (`recebida`, `transcrita`, `processada`, `sem_transcricao`, `erro_transcricao`, `vazia`) |
+| `POST /rotas/{id}/falas-offline` | **fala gravada sem sinal** (multipart: `audio` WAV/M4A, `idempotencyKey`, `faladoEm`, `duracaoMs`). 201 na primeira vez, 409 se repetida. Em segundo plano: transcreve (`STT_MODEL`, mesma chave do LLM), passa ao agente do motorista com o horário em que foi falada e manda a resposta como `aviso_motorista`. Uma fala por vez por rota, na ordem de chegada. O áudio é apagado do disco depois de transcrito com sucesso (só a transcrição fica registrada); se a transcrição falhar, o arquivo é mantido para diagnóstico. Evento `fala_offline` com `status` (`recebida`, `transcrita`, `processada`, `sem_transcricao`, `erro_transcricao`, `vazia`) |
 | `GET /events?tripId&since` | linha do tempo no formato `DomainEvent {id, idempotencyKey, tripId, type, occurredAt, receivedAt, source, payload}`; serve para o polling de 2 s |
 | `GET /api/route?tripId` | rota do dia: polyline, origem, destino, recebedor, placa e NF |
 | `GET /api/receivers` | ranking de recebedores: espera média, ligações atendidas, estadia devida, avisados antes da chegada |
@@ -445,6 +447,7 @@ Chamadas manuais para operador mantêm a cascata Twilio PSTN → sala LiveKit RT
 - **Seed fictício:** a transportadora, o motorista, a placa, a NF, o recebedor e os telefones são inventados (`backend/app/seed.py`).
 - **Estadia acelerada:** com `ESTADIA_ACELERACAO=600`, 1 s real conta 10 min, para mostrar a franquia de 5 h e o valor em minutos de demo. Sem a variável, o relógio é real. Os intervalos com o CCO também são curtos (20 s).
 - **CCO:** chamados de chegada e ocorrência são persistidos no banco local, aparecem no painel e podem ser respondidos por botão. O canal de voz do agente entrega a resposta ao motorista; push/telefonia reais para a central continuam fora do escopo.
-- **Serviços externos:** LiveKit Cloud (RTC, Agents, Inference e SIP conforme plano), endpoint de LLM compatível com OpenAI, Twilio opcional para a primeira tentativa de ligação ao operador e cloudflared para clientes remotos.
+- **Serviços externos:** LiveKit Cloud (RTC, Agents, Inference e SIP conforme plano), endpoint de LLM compatível com OpenAI (chat e, só para falas offline, reconhecimento de fala via Audio Transcriptions), Nominatim/OpenStreetMap para a busca de endereço no cadastro de rota, Twilio opcional para a primeira tentativa de ligação ao operador e cloudflared para clientes remotos.
+- **Modo demo do token:** `POST /livekit/token` abre uma sala LiveKit sem rota nem sessão no backend, só para o teste de voz ao vivo da demo do app (botão "Entrar com SSO" no painel/site). O worker detecta a ausência de sessão e troca para `voice_agent.demo_ao_vivo` (`dominio/prompts.demo_ao_vivo`): prompt fixo, sem ferramentas, sem acesso ao sistema e sem gravar nada no banco. Esse token não verifica dono de rota, então o backend rejeita (400) qualquer `sala` com os prefixos reservados às sessões reais (`rodar-rota-`, `rodar-recebedor-`, `rodar-operador-`); só `GET /token`, restrito ao dono da rota ou à central, abre essas salas (`app/servicos/livekit.py`, `app/servicos/sessoes.py`).
 - **Contingência:** sem `LLM_API_KEY`, ou com a OpenAI fora do ar, o nosso LLM responde por palavras-chave (cheguei, fila, descarreguei, doca...) para a demo não travar.
-- **LGPD:** não guardamos áudio, só a transcrição. Não há gravação na nuvem nem dado de saúde.
+- **LGPD:** não guardamos áudio além do necessário para transcrever. As falas offline (`backend/app/servicos/falas_offline.py`) ficam em disco só até a transcrição ter sucesso, quando são apagadas e só a transcrição permanece no evento; o arquivo só persiste se a transcrição falhar, para permitir diagnóstico. Não há gravação na nuvem nem dado de saúde.

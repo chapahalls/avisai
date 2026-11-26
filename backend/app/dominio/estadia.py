@@ -37,7 +37,9 @@ def calcular(
 ) -> Resumo:
     ate = fim or agora
     h = max(0.0, (ate - inicio).total_seconds()) * aceleracao / 3600
-    excedente = max(0.0, h - franquia_h)
+    excedente_corrido = max(0.0, h - franquia_h)
+    # Lei 11.442, art. 11, §5º: "por tonelada/hora ou fração" — hora começada conta inteira.
+    excedente = math.ceil(round(excedente_corrido, 6)) if excedente_corrido > 0 else 0.0
     valor = round(excedente * capacidade_t * valor_t_h, 2)
     restante = max(0.0, franquia_h - h)
     return Resumo(

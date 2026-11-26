@@ -26,6 +26,12 @@ def canal_operador(chamada_id: int) -> str:
     return f"rodar-operador-{chamada_id}"
 
 
+# Prefixos de sala usados só pelas sessões reais do backend (motorista, recebedor, operador).
+# O token de demo (POST /livekit/token) nunca pode assinar uma sala com esses prefixos: são
+# as salas com agente dispatachado e dados de rota, protegidas pelo dono (GET /token, /sessions).
+PREFIXOS_RESERVADOS = ("rodar-rota-", "rodar-recebedor-", "rodar-operador-")
+
+
 def identidade_usuario(sa: SessaoAgente) -> str:
     if sa.papel == Papel.RECEBEDOR:
         return f"recebedor-{sa.ligacao_id}"
