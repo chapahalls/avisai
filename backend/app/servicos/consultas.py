@@ -12,6 +12,10 @@ class NaoEncontrado(LookupError):
     pass
 
 
+class ConflitoEstado(ValueError):
+    """A operação não vale para o estado atual da entidade (vira HTTP 409)."""
+
+
 def rota(rota_id: int) -> Rota:
     with sessao() as s:
         r = s.get(Rota, rota_id)

@@ -108,10 +108,45 @@ class DomainEventIn(BaseModel):
 E164 = r"^\+[1-9]\d{7,14}$"
 
 
+class VinculoGeo(BaseModel):
+    """De onde veio a coordenada: resultado escolhido na geocodificação ou digitada pelo CCO."""
+    fonte: Literal["geocodificacao", "manual"]
+    provedor: Optional[str] = Field(default=None, max_length=40)
+    id: Optional[str] = Field(default=None, max_length=120)  # identificador do lugar no provedor
+    endereco: Optional[str] = Field(default=None, max_length=500)  # endereço como o provedor devolveu
+
+    @model_validator(mode="after")
+    def _geocodificacao_identificada(self):
+        if self.fonte == "geocodificacao" and not (self.provedor and self.id):
+            raise ValueError("geocodificação exige provedor e id do lugar")
+        return self
+
+
 class Ponto(BaseModel):
-    nome: str
+    nome: str = Field(min_length=1)
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    endereco: str = Field(default="", max_length=300)
+    geo: Optional[VinculoGeo] = None
+
+
+class GeoResultado(BaseModel):
+    id: str
+    endereco: str
     lat: float
     lng: float
+    tipo: Optional[str] = None
+
+
+class GeocodificacaoOut(BaseModel):
+    provedor: str
+    atribuicao: str
+    resultados: list[GeoResultado]
+
+
+class Cancelar(BaseModel):
+    motivo: str = Field(min_length=3, max_length=500)
+    por: str = Field(default="CCO", min_length=1, max_length=80)
 
 
 class RecebedorIn(BaseModel):

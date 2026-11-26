@@ -42,6 +42,7 @@ TIPO_DOMINIO = {
     "task_confirmada": "TaskAcknowledged",
     "descarga": "UnloadConfirmed",
     "rota_atribuida": "RouteAssigned",
+    "rota_cancelada": "TripCancelled",
     "pergunta_documento": "DocumentQuestionAnswered",
     "ocorrencia_detalhada": "OccurrenceDetailed",
     "ocorrencia_grave": "OccurrenceCritical",
@@ -77,7 +78,7 @@ TIPO_DOMINIO = {
     "fala_recebedor": "VoiceTranscript",
     "fala_agente": "VoiceTranscript",
 }
-FONTE = {"arquivo_adicionado": "cco", "rota_publicada": "cco", "rota_atribuida": "cco", "fala_motorista": "driver", "fala_recebedor": "agent", "fala_agente": "agent", "task_confirmada": "cco",
+FONTE = {"arquivo_adicionado": "cco", "rota_publicada": "cco", "rota_atribuida": "cco", "rota_cancelada": "cco", "fala_motorista": "driver", "fala_recebedor": "agent", "fala_agente": "agent", "task_confirmada": "cco",
          "pedido_central": "cco", "aproximacao": "system", "chegada": "system", "retirada_detectada": "system"}
 
 

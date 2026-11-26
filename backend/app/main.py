@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
-from .api import agentes, arquivos, cco, compat, falas_offline, ligacoes, livekit, llm, rotas, usuarios
+from .api import agentes, arquivos, cco, compat, falas_offline, geocodificacao, ligacoes, livekit, llm, rotas, usuarios
 from .infra.upload_limit import UploadLimitMiddleware
 from .infra import container as ct
 from .infra.settings import Settings
@@ -60,6 +60,7 @@ app.include_router(llm.router)
 app.include_router(cco.router)
 app.include_router(compat.router)
 app.include_router(livekit.router)
+app.include_router(geocodificacao.router)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 

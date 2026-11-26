@@ -7,7 +7,7 @@ from ..infra.models import (ChamadaAgente, ChamadoCCO, Estadia, Evento, EventoGe
                             Motorista, Ocorrencia, Reporte, Rota, SessaoAgente, SolicitacaoCentral, TaskCCO)
 from ..servicos import central, consultas, mensagens, publicacao, rotas, sessoes, tasks
 from .deps import c, erro_http, exigir_acesso_rota, exigir_cco
-from .schemas import Atribuir, Descarga, NovaMensagemMotorista, NovaRota, NovaSolicitacao, NovoMotorista, Posicao, PosicaoOut
+from .schemas import Atribuir, Cancelar, Descarga, NovaMensagemMotorista, NovaRota, NovaSolicitacao, NovoMotorista, Posicao, PosicaoOut
 
 router = APIRouter(tags=["rotas"])
 
@@ -147,6 +147,16 @@ async def atribuir_rota(rota_id: int, body: Atribuir, ct=Depends(c)):
     """Atribui a rota a um motorista: gera RouteAssigned e o app (WS ?motorista_id=) recebe na hora."""
     try:
         r = await publicacao.atribuir(ct, rota_id, body.motorista_id)
+    except Exception as e:  # noqa: BLE001
+        raise erro_http(e)
+    return rota_publica(r)
+
+
+@router.post("/rotas/{rota_id}/cancelar", dependencies=[Depends(exigir_cco)])
+async def cancelar_rota(rota_id: int, body: Cancelar, ct=Depends(c)):
+    """Cancela a viagem antes da chegada ao destino. 409 quando já chegou, foi descarregada ou cancelada."""
+    try:
+        r = await publicacao.cancelar(ct, rota_id, body.motivo, body.por)
     except Exception as e:  # noqa: BLE001
         raise erro_http(e)
     return rota_publica(r)

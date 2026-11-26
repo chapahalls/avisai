@@ -32,6 +32,14 @@ def prova(c, r: Rota, lat: float, lng: float) -> dict:
 async def registrar_posicao(c, rota_id: int, lat: float, lng: float, velocidade_kmh: Optional[float] = None,
                             precisao_m: Optional[float] = None, fonte: str = "celular") -> dict:
     agora = c.relogio.agora()
+    with sessao() as s:
+        r = s.get(Rota, rota_id)
+        if not r:
+            raise consultas.NaoEncontrado(f"rota {rota_id} não existe")
+        if r.status == StatusRota.CANCELADA:
+            # O app pode seguir mandando GPS até saber do cancelamento: sem geocerca, ETA nem publicação.
+            return {"rota_id": rota_id, "distancia_m": r.distancia_m or 0, "eta_min": r.eta_min or 0,
+                    "status": r.status, "disparos": []}
     if fonte == "rastreador":
         with sessao() as s:
             r = s.get(Rota, rota_id)

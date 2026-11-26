@@ -46,3 +46,14 @@ class Discador(Protocol):
     async def ligar(self, room: str, numero: str, identity: str) -> str: ...
     async def encerrar(self, room: str, identity: str) -> None: ...
     async def estado(self, room: str, identity: str) -> Optional[str]: ...
+
+
+class Geocodificador(Protocol):
+    """Endereço digitado → lugares candidatos com coordenada. Implementação: integracoes/nominatim.py."""
+
+    provedor: str
+    atribuicao: str  # crédito exigido pelo provedor, mostrado junto dos resultados
+
+    async def buscar(self, consulta: str, limite: int = 5) -> list[dict]:
+        """[{id, endereco, lat, lng, tipo}] na ordem de relevância do provedor; [] quando nada casa."""
+        ...

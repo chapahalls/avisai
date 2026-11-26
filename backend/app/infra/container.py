@@ -24,6 +24,7 @@ class Container:
     llm: Any  # portas.LLM
     twilio: Any = None  # integrações.twilio.TwilioGateway; opcional para testes sem PSTN
     transcritor: Any = None  # portas.Transcritor; sem ele a fala offline fica guardada sem texto
+    geocodificador: Any = None  # portas.Geocodificador; sem ele a busca de endereço responde 503
     relogio: Any = field(default_factory=RelogioSistema)  # portas.Relogio
     eventos: Eventos = field(default_factory=Eventos)
     tarefas: dict = field(default_factory=dict)
@@ -52,9 +53,12 @@ def padrao() -> Container:
     from ..integracoes.openai_llm import OpenAILLM
     from ..integracoes.openai_stt import OpenAITranscritor
 
+    from ..integracoes.nominatim import NominatimGeocodificador
+
     s = Settings()
+    geocodificador = NominatimGeocodificador(s) if s.geocodificacao_provedor == "nominatim" else None
     return Container(settings=s, livekit=LiveKitGateway(s), llm=OpenAILLM(s),
-                     transcritor=OpenAITranscritor(s) if s.llm_api_key else None)
+                     transcritor=OpenAITranscritor(s) if s.llm_api_key else None, geocodificador=geocodificador)
 
 
 def atual() -> Container:

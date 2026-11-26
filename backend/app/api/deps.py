@@ -7,7 +7,8 @@ from ..infra import container as ct
 from ..infra.db import sessao
 from ..infra.models import Rota, SessaoAgente
 from ..integracoes.livekit import LiveKitErro
-from ..servicos.consultas import NaoEncontrado
+from ..integracoes.nominatim import GeocodificacaoErro
+from ..servicos.consultas import ConflitoEstado, NaoEncontrado
 from ..servicos.usuarios import ConflitoUsuario
 
 
@@ -18,9 +19,11 @@ def c() -> ct.Container:
 def erro_http(e: Exception) -> HTTPException:
     if isinstance(e, NaoEncontrado):
         return HTTPException(404, str(e))
+    if isinstance(e, GeocodificacaoErro):
+        return HTTPException(502, {"erro": "geocodificacao", "detalhe": str(e)})
     if isinstance(e, LiveKitErro):
         return HTTPException(502, {"erro": "livekit", "status": e.status, "corpo": e.corpo})
-    if isinstance(e, ConflitoUsuario):
+    if isinstance(e, ConflitoUsuario | ConflitoEstado):
         return HTTPException(409, str(e))
     if isinstance(e, ValueError):
         return HTTPException(400, str(e))

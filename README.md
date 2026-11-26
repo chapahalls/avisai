@@ -201,6 +201,8 @@ O contrato HTTP e os eventos de negócio foram mantidos; transporte e credenciai
    - `GET /api/route?driverId=` (ou `GET /motoristas/{id}/rota-atual`) traz a rota;
    - o WebSocket `/ws?motorista_id=` recebe as atribuições novas na hora (no hook RN: `motoristaId` e `onRotaAtribuida`).
 4. **Motoristas:** `GET /motoristas` e `POST /motoristas {nome, telefone_e164, email}`. No seed, o Carlos é `carlos@rotasul.test`.
+5. **Endereço e coordenada:** cada ponto de `POST /rotas` exige `lat`/`lng` válidos e aceita `endereco` e `geo {fonte: geocodificacao|manual, provedor, id, endereco}`. O painel busca o endereço em `GET /geocodificacao`, o CCO escolhe o resultado e a rota guarda o vínculo em `origem_geo`/`destino_geo`. A porta `Geocodificador` (`app/portas.py`) usa o Nominatim (OpenStreetMap) por padrão: **o endereço digitado sai para esse serviço**, com limite de 1 req/s e cache de 24 h; para produção, aponte `GEOCODIFICACAO_URL` para instância própria ou desligue com `GEOCODIFICACAO_PROVEDOR=`. Os testes usam `FakeGeocodificador` com lugares fictícios.
+6. **Cancelamento:** `POST /rotas/{id}/cancelar {motivo}` vale de `publicada` a `aproximando`. Depois disso a rota não volta como rota atual, chegada/descarga/atribuição respondem 409 e o GPS recebido é ignorado. Eventos, arquivos e histórico ficam.
 
 ### Fluxos de operação cobertos (doc, seções 5.5 e 6.3)
 1. **Retirada na origem:** a geocerca da origem faz o agente perguntar "Confirma a retirada da carga?". A confirmação por voz (`confirmar_retirada`) valida a prova, e em seguida vem o **relatório inicial** (caminhão e carga).
@@ -301,7 +303,9 @@ Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi
 |---|---|---|---|
 | GET / POST | `/rotas` | — / `NovaRota` | lista ou publica rota; `motorista_id` é opcional por compatibilidade, embora o painel CCO exija um motorista cadastrado |
 | GET | `/rotas/{id}` | — | detalhe, trajetória e posições |
-| POST | `/rotas/{id}/atribuir` | `{motorista_id}` | atribui/reatribui e emite `rota_atribuida` |
+| POST | `/rotas/{id}/atribuir` | `{motorista_id}` | atribui/reatribui e emite `rota_atribuida`; rota descarregada ou cancelada → 409 |
+| POST | `/rotas/{id}/cancelar` | `{motivo, por?}` | encerra a viagem sem descarga (`cancelada`) e emite `rota_cancelada` (`TripCancelled`); só antes de `no_destino`, senão 409 |
+| GET | `/geocodificacao?q=&limite=` | — | candidatos `{id, endereco, lat, lng, tipo}` para o endereço digitado (papel `cco`); 503 sem provedor, 502 quando o provedor falha |
 | POST | `/rotas/{id}/posicao` | GPS do celular ou rastreador | atualiza posição, geocerca e status |
 | POST | `/rotas/{id}/chegada`<br>`/descarga`<br>`/reset` | — / `{por?}` / — | registra chegada, encerra descarga ou reinicia a rota de demonstração |
 | GET / POST | `/rotas/{id}/solicitacoes` | — / `{pergunta}` | pedidos do CCO e resposta capturada pelo agente |
@@ -390,6 +394,7 @@ Obrigatórias para voz: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`. 
 | `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | `gpt-4o-mini` | upstream OpenAI compatível para `/v1/chat/completions` e avaliação de diálogos |
 | `PUBLIC_URL` | descoberta automática | URL do túnel |
 | `RECEBEDOR_MODO` | `rtc` | `rtc` (plano B) ou `sip` (plano A) |
+| `GEOCODIFICACAO_PROVEDOR`, `GEOCODIFICACAO_URL` | `nominatim`, instância pública | busca de endereço do cadastro de rota; vazio desliga (503) |
 | `LIVEKIT_SIP_TRUNK_ID`, `LIVEKIT_SIP_FROM_NUMBER`, `RECEBEDOR_TELEFONE_E164` | — | trunk e números do plano SIP |
 | `LIVEKIT_MODEL` | `google/gemini-3.8-live` | modelo realtime speech-to-speech do LiveKit Inference |
 | `LIVEKIT_VOICE` | `Charon` | voz nativa do Gemini Live |

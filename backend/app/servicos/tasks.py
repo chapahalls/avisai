@@ -26,6 +26,8 @@ async def on_chegada(c, rota_id: int, origem: str = "gps", transcricao: Optional
         r = s.get(Rota, rota_id)
         if not r:
             raise consultas.NaoEncontrado(f"rota {rota_id} não existe")
+        if r.status == StatusRota.CANCELADA:
+            raise consultas.ConflitoEstado(f"rota {rota_id} está cancelada")
         t = s.exec(select(TaskCCO).where(TaskCCO.rota_id == rota_id, TaskCCO.tipo == "chegada")).first()
         geo = s.exec(select(EventoGeo).where(EventoGeo.rota_id == rota_id, EventoGeo.tipo == TipoGeo.CHEGADA)).first()
         if origem == "voz":
@@ -192,6 +194,8 @@ async def confirmar_descarga(c, rota_id: int, por: str = "motorista", transcrica
         r = s.get(Rota, rota_id)
         if not r:
             raise consultas.NaoEncontrado(f"rota {rota_id} não existe")
+        if r.status == StatusRota.CANCELADA:
+            raise consultas.ConflitoEstado(f"rota {rota_id} está cancelada e não tem descarga")
         e = s.exec(select(Estadia).where(Estadia.rota_id == rota_id, Estadia.fim == None)).first()  # noqa: E711
         t = s.exec(select(TaskCCO).where(TaskCCO.rota_id == rota_id).order_by(TaskCCO.id.desc())).first()
         if e:

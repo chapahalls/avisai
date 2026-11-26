@@ -10,6 +10,7 @@ class StatusRota(StrEnum):
     APROXIMANDO = "aproximando"
     NO_DESTINO = "no_destino"
     DESCARREGADA = "descarregada"
+    CANCELADA = "cancelada"  # encerrada sem descarga, por decisão da central
 
 
 class StatusTask(StrEnum):
@@ -101,6 +102,7 @@ class TipoEvento(StrEnum):
     EVENTO_APP = "evento_app"
     ROTA_PUBLICADA = "rota_publicada"
     ROTA_ATRIBUIDA = "rota_atribuida"
+    ROTA_CANCELADA = "rota_cancelada"
     PERGUNTA_DOCUMENTO = "pergunta_documento"
     OCORRENCIA_DETALHADA = "ocorrencia_detalhada"
     OCORRENCIA_GRAVE = "ocorrencia_grave"

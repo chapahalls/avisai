@@ -60,12 +60,20 @@ class Rota(SQLModel, table=True):
     origem_nome: str
     origem_lat: float
     origem_lng: float
+    # Endereço digitado pelo CCO e o vínculo da coordenada: {fonte: geocodificacao|manual, provedor, id, endereco}.
+    origem_endereco: str = ""
+    origem_geo: dict = Field(default_factory=dict, sa_column=Column(JSON))
     destino_nome: str
     destino_lat: float
     destino_lng: float
+    destino_endereco: str = ""
+    destino_geo: dict = Field(default_factory=dict, sa_column=Column(JSON))
     trajeto: list = Field(default_factory=list, sa_column=Column(JSON))  # [[lat, lng], ...]
-    # planejada | em_transito | aproximando | no_destino | descarregada
+    # publicada | planejada | na_origem | em_transito | aproximando | no_destino | descarregada | cancelada
     status: str = "planejada"
+    cancelada_em: Optional[datetime] = None
+    cancelada_por: Optional[str] = None
+    cancelamento_motivo: Optional[str] = None
     placa: str = ""
     nota_fiscal: str = ""
     carga_descricao: str = ""

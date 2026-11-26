@@ -11,7 +11,7 @@ from app.infra.db import engine
 from app.infra.eventos import Eventos
 from app.infra.settings import Settings
 from app.seed import seed
-from tests.fakes import FakeLiveKit, FakeLLM, FakeTranscritor, RelogioFixo
+from tests.fakes import FakeGeocodificador, FakeLiveKit, FakeLLM, FakeTranscritor, RelogioFixo
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -76,15 +76,20 @@ def fake_transcritor() -> FakeTranscritor:
 
 
 @pytest.fixture
+def fake_geocodificador() -> FakeGeocodificador:
+    return FakeGeocodificador()
+
+
+@pytest.fixture
 def relogio() -> RelogioFixo:
     return RelogioFixo()
 
 
 @pytest.fixture
-async def container(settings, fake_livekit, fake_llm, fake_transcritor, relogio, tmp_path):
+async def container(settings, fake_livekit, fake_llm, fake_transcritor, fake_geocodificador, relogio, tmp_path):
     settings.falas_offline_dir = str(tmp_path / "falas_offline")
     c = ct.Container(settings=settings, livekit=fake_livekit, llm=fake_llm, transcritor=fake_transcritor,
-                     relogio=relogio, eventos=Eventos())
+                     geocodificador=fake_geocodificador, relogio=relogio, eventos=Eventos())
     ct.definir(c)
     yield c
     pendentes = [t for t in c.tarefas.values() if not t.done()]

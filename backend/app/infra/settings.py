@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     public_url: str = ""
     tunnel_metrics_url: str = ""
 
+    # Geocodificação do endereço digitado no cadastro de rota: nominatim | "" (desligada).
+    # A instância pública do Nominatim aceita 1 req/s; para produção, use instância própria ou outro provedor.
+    geocodificacao_provedor: str = "nominatim"
+    geocodificacao_url: str = "https://nominatim.openstreetmap.org"
+    geocodificacao_pais: str = "br"
+    geocodificacao_user_agent: str = "AvisAI-backend/0.1"
+    geocodificacao_intervalo_s: float = Field(default=1.0, ge=0)
+
     # Banco
     database_url: str = "postgresql+psycopg://avisai:avisai@db:5432/avisai"
 

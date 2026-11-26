@@ -106,3 +106,23 @@ class RelogioFixo:
 
     def avancar(self, **kw) -> None:
         self.t = self.t + timedelta(**kw)
+
+
+@dataclass
+class FakeGeocodificador:
+    """Catálogo fixo de lugares fictícios; grava as consultas recebidas."""
+    provedor: str = "fake"
+    atribuicao: str = "Dados de teste"
+    consultas: list = field(default_factory=list)
+    falhar: Optional[Exception] = None
+    lugares: list = field(default_factory=lambda: [
+        {"id": "N101", "endereco": "Rua das Indústrias, 100, Jundiaí, SP", "lat": -23.1857, "lng": -46.8978, "tipo": "house"},
+        {"id": "W202", "endereco": "Avenida do Atacado, 2000, Sorocaba, SP", "lat": -23.5015, "lng": -47.4526, "tipo": "road"},
+    ])
+
+    async def buscar(self, consulta: str, limite: int = 5) -> list[dict]:
+        self.consultas.append((consulta, limite))
+        if self.falhar:
+            raise self.falhar
+        termos = consulta.lower().split()
+        return [x for x in self.lugares if any(t in x["endereco"].lower() for t in termos)][:limite]
