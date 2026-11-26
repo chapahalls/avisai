@@ -18,9 +18,25 @@ log = logging.getLogger("avisai")
 STATIC = Path(__file__).resolve().parent.parent / "static"
 
 
+AUTH_SEGREDO_MIN = 32
+
+
+def checar_segredo_auth(s: Settings) -> None:
+    """Com login obrigatório, o segredo do JWT precisa ser fixo: um segredo temporário derruba os tokens a cada reinício."""
+    if s.auth_obrigatoria and len(s.auth_segredo) < AUTH_SEGREDO_MIN:
+        raise RuntimeError(
+            f"AUTH_OBRIGATORIA=true exige AUTH_SEGREDO com pelo menos {AUTH_SEGREDO_MIN} caracteres. "
+            'Gere com: python -c "import secrets; print(secrets.token_urlsafe(48))". '
+            "Só em desenvolvimento local: AUTH_OBRIGATORIA=false."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     s = ct.atual().settings
+    checar_segredo_auth(s)
+    if not s.auth_obrigatoria:
+        log.warning("AUTH_OBRIGATORIA=false: escrita sem login liberada (só para desenvolvimento)")
     if not s.agora_configurada():
         log.warning("AGORA_APP_ID/AGORA_APP_CERTIFICATE ausentes")
     if s.llm_mode == "custom" and not s.llm_shared_secret:

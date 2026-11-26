@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/avisai.iml" filepath="$PROJECT_DIR$/.idea/avisai.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../rodar-mobile/.idea/avisai-mobile.iml" filepath="$PROJECT_DIR$/../rodar-mobile/.idea/avisai-mobile.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../rodar-web/.idea/avisai-web.iml" filepath="$PROJECT_DIR$/../rodar-web/.idea/avisai-web.iml" />
+    </modules>
+  </component>
+</project>

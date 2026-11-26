@@ -21,7 +21,7 @@ from ..infra.models import Evento, SessaoAgente
 from ..integracoes import tokens
 from ..servicos import chamados, consultas, ligacoes, metricas, publicacao, reportes, sessoes, tasks, usuarios
 from ..infra import auth
-from .deps import c, erro_http, limitar_ligacao
+from .deps import c, erro_http, exigir_login, limitar_ligacao, verificar_acesso_rota, verificar_acesso_sessao
 from .schemas import DomainEventIn, SsoOut
 
 router = APIRouter(tags=["compat (docs/arquitetura-avisai.md)"])
@@ -122,9 +122,11 @@ class AgentStop(BaseModel):
 
 
 @router.post("/agent/start")
-async def agent_start(body: AgentStart = AgentStart(), ct=Depends(c)):
+async def agent_start(body: AgentStart = AgentStart(), ct=Depends(c), usuario=Depends(exigir_login)):
+    rid = body.rota_id or _rota_id(body.tripId)
+    verificar_acesso_rota(ct, usuario, rid)
     try:
-        sa = await sessoes.iniciar_motorista(ct, body.rota_id or _rota_id(body.tripId))
+        sa = await sessoes.iniciar_motorista(ct, rid)
     except Exception as e:  # noqa: BLE001
         raise erro_http(e)
     return {"sessionId": sa.id, "agentId": sa.agent_id, "agentUid": sa.agent_uid, "appId": ct.settings.agora_app_id,
@@ -133,7 +135,7 @@ async def agent_start(body: AgentStart = AgentStart(), ct=Depends(c)):
 
 
 @router.post("/agent/stop")
-async def agent_stop(body: AgentStop, ct=Depends(c)):
+async def agent_stop(body: AgentStop, ct=Depends(c), usuario=Depends(exigir_login)):
     sid = body.sessionId
     if sid is None and body.agentId:
         with sessao() as s:
@@ -141,6 +143,7 @@ async def agent_stop(body: AgentStop, ct=Depends(c)):
         sid = sa.id if sa else None
     if sid is None:
         raise erro_http(consultas.NaoEncontrado("sessão não existe"))
+    verificar_acesso_sessao(ct, usuario, sid)
     try:
         sa = await sessoes.encerrar(ct, sid)
     except Exception as e:  # noqa: BLE001
@@ -154,8 +157,9 @@ class CallReceiver(BaseModel):
 
 
 @router.post("/call/receiver")
-async def call_receiver(body: CallReceiver = CallReceiver(), ct=Depends(c)):
+async def call_receiver(body: CallReceiver = CallReceiver(), ct=Depends(c), usuario=Depends(exigir_login)):
     rid = _rota_id(body.tripId)
+    verificar_acesso_rota(ct, usuario, rid)
     limitar_ligacao(ct, rid)
     t = consultas.ultima_task(rid)
     try:
@@ -201,9 +205,10 @@ async def _aplicar(ct, rid: int, e: DomainEventIn) -> None:
 
 
 @router.post("/events")
-async def post_event(e: DomainEventIn, ct=Depends(c)):
+async def post_event(e: DomainEventIn, ct=Depends(c), usuario=Depends(exigir_login)):
     """Recebe o outbox do app. Idempotente por idempotencyKey: repetido devolve 409 (o app trata como enviado)."""
     rid = _rota_id(e.tripId)
+    verificar_acesso_rota(ct, usuario, rid)
     try:
         with sessao() as s:
             ev = Evento(rota_id=rid, tipo=TipoEvento.EVENTO_APP, mensagem=f"Evento do app: {e.type}",
