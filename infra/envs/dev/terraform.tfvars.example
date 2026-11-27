@@ -1,0 +1,9 @@
+# Copie para terraform.tfvars (não commitado) e ajuste se precisar.
+# Todos os defaults já batem com a conta dev da Rumo — na maioria das vezes
+# não precisa mudar nada aqui.
+
+# aws_profile = "cdk-manager-dev"
+# region      = "us-east-1"
+
+# api_image         = "140147589257.dkr.ecr.us-east-1.amazonaws.com/rumolog-backend:api-latest"
+# voice_agent_image = "140147589257.dkr.ecr.us-east-1.amazonaws.com/rumolog-backend:voice-agent-latest"
