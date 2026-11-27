@@ -67,10 +67,15 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 @app.get("/health", tags=["infra"])
 def health():
     s = ct.atual().settings
+    from .infra.db import banco_ok
     from .integracoes.tunel import url_publica
 
+    banco = banco_ok()
     return {
-        "ok": True,
+        # sem banco, login e qualquer rota de escrita ou leitura de dado real ficam fora do ar;
+        # "ok" segue o banco, não só o processo de pé (ver docs/edi/ocoren-integracao.md, risco de deploy no README)
+        "ok": banco,
+        "banco_ok": banco,
         "livekit_configurada": s.livekit_configurada(),
         "twilio_configurado": s.twilio_configurada(),
         "llm_mode": "custom",
