@@ -1,6 +1,9 @@
 # RODAR · backend
 
 [![CI](https://github.com/rodarglobal/rodar-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/rodarglobal/rodar-backend/actions/workflows/ci.yml)
+[![Deploy](https://img.shields.io/badge/deploy-vercel-black?logo=vercel)](https://rodar-backend-five.vercel.app/docs)
+
+CI no GitHub Actions (lint com ruff e testes com pytest) a cada push e pull request em `main`; passando, o deploy é automático na **Vercel**. A API em produção está em [rodar-backend-five.vercel.app](https://rodar-backend-five.vercel.app), com a documentação interativa (Swagger) em **[/docs](https://rodar-backend-five.vercel.app/docs)**.
 
 Copiloto de voz do RODAR para transportadoras, focado no **caminhão parado**:
 1. Na aproximação, o agente avisa o motorista e o CCO.
@@ -31,9 +34,10 @@ O áudio WebRTC e o worker de voz rodam no **LiveKit**. Os clientes publicam áu
 | **Trilha** | Logística & automação |
 | **Em uma frase** | Um agente de voz que avisa o recebedor antes da chegada, conta a estadia do caminhão parado (Lei 11.442) e só chama a central quando alguém precisa decidir. |
 | **Demo no ar** | [painel do CCO e site no modo Demo](https://rodarglobal.github.io/rodar-web/) (clique em **Entrar com SSO**) · [app do motorista no navegador](https://rodarglobal.github.io/rodar-mobile/) |
+| **API em produção** | backend com deploy contínuo na **Vercel**: [rodar-backend-five.vercel.app/docs](https://rodar-backend-five.vercel.app/docs) |
 | **Ver sem instalar nada** | [tour em vídeo de 1 min](https://github.com/rodarglobal/rodar-web/blob/main/docs/assets/readme/tour.mp4) do site e do painel · [tour do app do motorista (1 min)](https://github.com/rodarglobal/rodar-mobile/blob/main/docs/assets/readme/tour.mp4) · [validação ponta a ponta histórica, anterior à troca do provedor de voz](https://github.com/rodarglobal/rodar-backend/blob/main/evidence/validacao.md) · [telas do app](https://github.com/rodarglobal/rodar-mobile#telas-do-aplicativo) |
 | **Repositórios** | [rodar-backend](https://github.com/rodarglobal/rodar-backend) (este) · [rodar-web](https://github.com/rodarglobal/rodar-web) · [rodar-mobile](https://github.com/rodarglobal/rodar-mobile) |
-| **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 568 testes automatizados: 332 no backend, 127 no web, 109 no mobile |
+| **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 568 testes automatizados: 332 no backend, 127 no web, 109 no mobile · neste repo, CI no GitHub Actions seguido de deploy automático na Vercel |
 | **Segurança** | JWT assinado no login e exigido em toda escrita (padrão), papel `cco` nas ações da central, motorista só na própria rota, CORS restrito e limite de ligações. O que falta para produção está [escrito aqui](#o-que-falta-para-produção) |
 | **O que é simulado** | login sem senha, GPS da rota, documentos fiscais e o modo Demo do painel: [lista completa](#simulado--pré-existente-e5e8) |
 | **Glossário** | **CCO**: a central de operações da transportadora · **recebedor**: quem descarrega (CD, atacado, loja) · **doca**: o portão de descarga · **estadia**: o valor que a lei manda pagar pelo caminhão parado além de 5 h (a **franquia**; Lei 11.442) · **geocerca**: o raio em volta do destino que marca a chegada · **Task**: o pedido que o CCO precisa responder |
@@ -57,6 +61,7 @@ O backend coordena a operação que começa na viagem atribuída e termina na de
 | Tempo real | SSE do CCO e WebSocket para rota/motorista | sem replay/cursor garantido; clientes precisam reconciliar por REST |
 | Voz e chamadas | LiveKit RTC/Agents com Gemini Live, ferramentas auditadas no backend, cascata Twilio → LiveKit RTC/SIP | LiveKit Cloud/Inference, PSTN e RTC exigem credenciais e configuração de trunk |
 | Arquivos | metadados no Postgres e binários em `ARQUIVOS_DIR`; só a central anexa, e só a central e o motorista da rota leem e baixam | sem versionamento de arquivos |
+| Integração EDI (OCOREN) | motor de largura fixa único (`conectores/edi/motor.py`) lê os layouts OCOREN 5.0 e 3.1 como dado, com perfil por parceiro (`ParceiroEdi`, De-Para editável) (`docs/edi/ocoren-integracao.md`) | só download manual pelo CCO; sem SFTP/fila, CNPJ e NF-e fictícios na demo, De-Para sem homologação de parceiro real |
 | Identidade e acesso | perfis persistidos; `/auth/sso` emite **JWT assinado** (HS256, papel e validade); com `AUTH_OBRIGATORIA=true` (padrão) toda escrita exige token, as ações da central exigem papel `cco` e o motorista só age na rota atribuída a ele; CORS só nas origens de `CORS_ORIGENS`; segredo do LLM comparado em tempo constante; limite de ligações manuais por rota | o login continua simulado (sem senha); as leituras (`GET`, SSE e WebSocket) seguem abertas |
 
 Os frontends devem conservar essa distinção. Não use um campo ausente da API para gerar GPS, valor de estadia, documento, evento ou sucesso de telefonia no cliente.
@@ -75,7 +80,11 @@ Os frontends devem conservar essa distinção. Não use um campo ausente da API 
   - Nominatim (OpenStreetMap), para a busca de endereço no cadastro de rota (`GET /geocodificacao`); opcional, pode ser desligado (`GEOCODIFICACAO_PROVEDOR=`) ou trocado por instância própria;
   - Twilio, só para a ligação telefônica real, que é opcional.
 
-## Como rodar (clone limpo, só Docker)
+## Como rodar
+
+**Já em produção:** a API tem deploy contínuo na Vercel em [rodar-backend-five.vercel.app](https://rodar-backend-five.vercel.app), com a doc interativa em [/docs](https://rodar-backend-five.vercel.app/docs) — a cada push em `main`, o CI do GitHub Actions (lint + testes) roda primeiro, e passando, a Vercel publica a nova versão.
+
+Para rodar localmente (clone limpo, só Docker):
 
 ```bash
 git clone https://github.com/rodarglobal/rodar-backend.git && cd rodar-backend
@@ -155,7 +164,8 @@ O que está acima basta para a demo, não para operar com dados reais. Falta, em
 ```
 backend/app/
   dominio/       regras puras: estadia, geocerca, escalonamento, prompts, contingência, documentos e enums
-  servicos/      casos de uso: sessões, rotas, Tasks, chamadas, alertas, mensagens, chamados, conversa e ferramentas
+  servicos/      casos de uso: sessões, rotas, Tasks, chamadas, alertas, mensagens, chamados, conversa, ferramentas e EDI
+  conectores/edi/ motor de EDI de largura fixa + layouts OCOREN 5.0/3.1 como dado (sem adapter por versão)
   portas.py      contratos (typing.Protocol): LiveKitGateway, LLM, Relogio, Voz, Discador
   integracoes/   adaptadores reais: LiveKit, Twilio, OpenAI e túnel
   api/           routers FastAPI + schemas Pydantic; cada módulo agrupa uma superfície HTTP/WS
@@ -326,6 +336,21 @@ Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi
 | GET / POST | `/motoristas` | — / cadastro de motorista | lista ou cadastra o vínculo operacional |
 | GET | `/motoristas/{id}/rota-atual` | — | alternativa snake_case para a rota atual |
 
+### EDI / OCOREN (papel `cco`)
+
+Conector de largura fixa para o **OCOREN 5.0** (manual Intelipost, 250 colunas, padrão) e o **OCOREN 3.1**
+(manual PROCEDA, 120 colunas, variante). Um motor só (`backend/app/conectores/edi/motor.py`) lê cada
+registro como dado (`layouts/ocoren_50.py`, `layouts/ocoren_31.py`); o que muda por parceiro é o perfil
+(`ParceiroEdi`: layout, De-Para, caixa remetente/destinatário), nunca o código. Detalhe completo, mapeamento
+de campos e o que ainda falta (SFTP/fila, De-Para homologado) em [`docs/edi/ocoren-integracao.md`](docs/edi/ocoren-integracao.md).
+
+| Método | Caminho | Corpo | O que faz |
+|---|---|---|---|
+| GET | `/rotas/{id}/ocoren?parceiro=` | — | gera e baixa o arquivo (`OCOREN_<cnpj>_<ddMMHHmm>.txt`, `cp1252`); 409 sem `nfe_chave`/CNPJ cadastrados na rota ou na empresa |
+| GET / POST | `/edi/parceiros` | — / `ParceiroEdiIn` | lista ou cadastra um perfil de parceiro (layout, De-Para, campos extras) |
+| PATCH | `/edi/parceiros/{id}` | `ParceiroEdiPatch` | atualiza o perfil (ex.: trocar o layout ou sobrepor o De-Para) |
+| POST | `/edi/validar?layout=&codificacao=` | multipart `arquivo` | valida um arquivo OCOREN já recebido e devolve o erro por linha/campo; não grava nada |
+
 ### CCO, eventos e chamadas
 
 | Método | Caminho | Corpo | O que faz |
@@ -453,8 +478,9 @@ Chamadas manuais para operador mantêm a cascata Twilio PSTN → sala LiveKit RT
 - **GPS simulado:** `scripts/simular_rota.py` move o caminhão por um trajeto reto de Jundiaí a Campinas, chamando `POST /rotas/{id}/posicao`. Em produção, a posição viria do GPS do celular do motorista pelo mesmo endpoint.
 - **Ligação ao recebedor:** o padrão `RECEBEDOR_MODO=rtc` usa uma página web (`/recebedor`) ligada à sala LiveKit; `sip` usa o trunk de saída configurado no LiveKit.
 - **Seed fictício:** a transportadora, o motorista, a placa, a NF, o recebedor e os telefones são inventados (`backend/app/seed.py`).
+- **EDI OCOREN:** o backend **gera OCOREN 3.1 e 5.0** a partir dos layouts dos manuais PROCEDA 3.1 e Intelipost/OCOREN 5.0 — não está integrado ao TOTVS, à Intelipost nem a nenhum parceiro real. `hfoletto/edi-proceda` (MIT) foi usado só como referência de posição de campo ao transcrever o layout 3.1, não como dependência. Até 30/11 só existe **download manual** pelo CCO (`GET /rotas/{id}/ocoren`): sem SFTP nem fila/outbox. CNPJs e chaves de NF-e do seed são **fictícios** (dígito verificador válido, mas o número não existe). O De-Para evento→código é o padrão documentado pela Intelipost; não foi homologado com nenhum parceiro real. Detalhe em [`docs/edi/ocoren-integracao.md`](docs/edi/ocoren-integracao.md).
 - **Estadia acelerada:** com `ESTADIA_ACELERACAO=600`, 1 s real conta 10 min, para mostrar a franquia de 5 h e o valor em minutos de demo. Sem a variável, o relógio é real. Os intervalos com o CCO também são curtos (20 s).
-- **CCO:** chamados de chegada e ocorrência são persistidos no banco local, aparecem no painel e podem ser respondidos por botão. O canal de voz do agente entrega a resposta ao motorista; push/telefonia reais para a central continuam fora do escopo.
+- **CCO:** chamados de chegada e ocorrência são persistidos no banco local, aparecem no painel e podem ser respondidos por botão. O canal de voz do agente entrega a resposta ao motorista. As três tentativas sobem de canal de verdade: 1ª dispara uma notificação do navegador no painel (`Notification`, exige aba aberta e permissão concedida), 2ª sobe a prioridade da Task e destaca o alerta no painel, 3ª liga mesmo para a central (`chamadas_agente.ligar`, cascata Twilio PSTN → sala LiveKit RTC — nunca WhatsApp nem supervisor). Não há serviço de push/SMS externo: a "notificação" do 1º passo é só a do navegador.
 - **Serviços externos:** LiveKit Cloud (RTC, Agents, Inference e SIP conforme plano), endpoint de LLM compatível com OpenAI (chat e, só para falas offline, reconhecimento de fala via Audio Transcriptions), Nominatim/OpenStreetMap para a busca de endereço no cadastro de rota, Twilio opcional para a primeira tentativa de ligação ao operador e cloudflared para clientes remotos.
 - **Modo demo do token:** `POST /livekit/token` abre uma sala LiveKit sem rota nem sessão no backend, só para o teste de voz ao vivo da demo do app (botão "Entrar com SSO" no painel/site). O worker detecta a ausência de sessão e troca para `voice_agent.demo_ao_vivo` (`dominio/prompts.demo_ao_vivo`): prompt fixo, sem ferramentas, sem acesso ao sistema e sem gravar nada no banco. Esse token não verifica dono de rota, então o backend rejeita (400) qualquer `sala` com os prefixos reservados às sessões reais (`rodar-rota-`, `rodar-recebedor-`, `rodar-operador-`); só `GET /token`, restrito ao dono da rota ou à central, abre essas salas (`app/servicos/livekit.py`, `app/servicos/sessoes.py`).
 - **Contingência:** sem `LLM_API_KEY`, ou com a OpenAI fora do ar, o nosso LLM responde por palavras-chave (cheguei, fila, descarreguei, doca...) para a demo não travar.

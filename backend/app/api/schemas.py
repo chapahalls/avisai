@@ -220,3 +220,65 @@ class PerfilUsuarioOut(BaseModel):
 class SsoOut(BaseModel):
     token: str
     user: PerfilUsuarioOut
+
+
+LayoutEdi = Literal["ocoren-5.0", "ocoren-3.1"]
+
+
+class ParceiroEdiIn(BaseModel):
+    """Perfil de parceiro de EDI: escolhe o layout e o De-Para, nunca muda código (conectores/edi)."""
+    empresa_id: int = 1
+    nome: str = Field(min_length=1, max_length=120)
+    layout: LayoutEdi = "ocoren-5.0"
+    caixa_remetente: str = Field(default="", max_length=120)
+    caixa_destinatario: str = Field(default="", max_length=120)
+    depara: dict[str, str] = {}
+    campos_extras: dict[str, Any] = {}
+    codificacao: str = "cp1252"
+    fim_de_linha: str = "\r\n"
+    transporte: Literal["download"] = "download"  # até 30/11: sem SFTP/fila (ver docs/edi/ocoren-integracao.md)
+
+
+class ParceiroEdiPatch(BaseModel):
+    nome: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    layout: Optional[LayoutEdi] = None
+    caixa_remetente: Optional[str] = Field(default=None, max_length=120)
+    caixa_destinatario: Optional[str] = Field(default=None, max_length=120)
+    depara: Optional[dict[str, str]] = None
+    campos_extras: Optional[dict[str, Any]] = None
+    codificacao: Optional[str] = None
+    fim_de_linha: Optional[str] = None
+
+
+class ParceiroEdiOut(BaseModel):
+    id: int
+    empresa_id: int
+    nome: str
+    layout: str
+    caixa_remetente: str
+    caixa_destinatario: str
+    depara: dict[str, str]
+    campos_extras: dict[str, Any]
+    codificacao: str
+    fim_de_linha: str
+    transporte: str
+    criado_em: datetime
+
+
+class ErroValidacaoEdi(BaseModel):
+    linha: int
+    registro: Optional[str] = None
+    campo: Optional[str] = None
+    erro: str
+
+
+class RegistroValidadoEdi(BaseModel):
+    linha: int
+    registro: str
+    valores: dict[str, Optional[str]]
+
+
+class ValidacaoEdiOut(BaseModel):
+    ok: bool
+    erros: list[ErroValidacaoEdi]
+    registros: list[RegistroValidadoEdi]

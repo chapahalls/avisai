@@ -14,6 +14,8 @@ def agora() -> datetime:
 class Empresa(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     nome: str
+    cnpj: str = ""  # só dígitos; usado no OCOREN (541/341) e em outros EDI por CNPJ
+    razao_social: str = ""
 
 
 class RegraEscalonamento(SQLModel, table=True):
@@ -83,6 +85,11 @@ class Rota(SQLModel, table=True):
     recebedor_empresa: str = ""
     recebedor_nome: str = ""
     recebedor_telefone_e164: str = ""
+    # Dados do embarcador/NF-e: destinatário do OCOREN (seção 5 do conector EDI). Fictícios na demo.
+    nfe_chave: str = ""  # 44 dígitos, com DV módulo 11 (conectores/edi/nfe.py)
+    embarcador_nome: str = ""
+    embarcador_cnpj: str = ""
+    romaneio: str = ""
     aproximacao_min: float = 15
     raio_chegada_m: float = 300
     raio_origem_m: float = 300
@@ -215,6 +222,27 @@ class Estadia(SQLModel, table=True):
     franquia_h: float = 5
     capacidade_t: float = 0
     valor_t_h: float = 2.50
+    # Campos 21-22/25-26 do 542 (OCOREN 5.0): hoje não há evento próprio de início de descarga nem de
+    # saída da geocerca do destino, então ficam None e o conector OCOREN os zera (condicional, válido).
+    descarga_inicio_em: Optional[datetime] = None
+    saida_destino_em: Optional[datetime] = None
+
+
+class ParceiroEdi(SQLModel, table=True):
+    """Perfil por parceiro de EDI (seção 1 do conector OCOREN): escolhe o layout e o De-Para, não o código."""
+    __tablename__ = "parceiro_edi"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    empresa_id: int = Field(foreign_key="empresa.id")
+    nome: str
+    layout: str = "ocoren-5.0"  # ocoren-5.0 | ocoren-3.1 (ver conectores/edi/layouts)
+    caixa_remetente: str = ""  # vazio = usa Empresa.razao_social/nome
+    caixa_destinatario: str = ""  # vazio = usa Rota.embarcador_nome
+    depara: dict = Field(default_factory=dict, sa_column=Column(JSON))  # evento RODAR -> código; sobrepõe o padrão
+    campos_extras: dict = Field(default_factory=dict, sa_column=Column(JSON))  # ex.: identificação de embarque SAP
+    codificacao: str = "cp1252"
+    fim_de_linha: str = "\r\n"
+    transporte: str = "download"  # até 30/11, só download manual (sem SFTP/fila)
+    criado_em: datetime = Field(default_factory=agora)
 
 
 class SessaoAgente(SQLModel, table=True):
