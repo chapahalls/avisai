@@ -143,9 +143,13 @@ variable "log_retention_days" {
 }
 
 variable "cors_origins" {
-  description = "Origens liberadas no CORS da api (rodar-web e rodar-mobile publicados no GitHub Pages)."
+  description = <<-EOT
+    Origens liberadas no CORS da api. O painel rodar-web (Henry) saiu do
+    GitHub Pages (que parou de responder 404 nas publicações de 27/11) e
+    ficou só na Vercel — ver commit 69cdfab do rodar-web.
+  EOT
   type        = list(string)
   default = [
-    "https://rodarglobal.github.io",
+    "https://rodar-web-beta.vercel.app",
   ]
 }
