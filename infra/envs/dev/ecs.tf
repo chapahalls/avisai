@@ -78,6 +78,17 @@ resource "aws_ecs_task_definition" "api" {
     environment = [for k, v in local.common_environment : { name = k, value = v }]
     secrets     = local.common_secrets
 
+    # python -c em vez de curl/wget: a imagem (python:3.12-slim) não tem
+    # nenhum dos dois instalado. urlopen lança exceção (exit != 0) em erro
+    # de conexão ou status >= 400; sem exceção, o script termina com 0.
+    healthCheck = {
+      command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)\""]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60 # dá tempo pro alembic upgrade + seed antes do 1º check
+    }
+
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -109,6 +120,18 @@ resource "aws_ecs_task_definition" "voice_agent" {
       [{ name = "LIVEKIT_LLM_URL", value = "http://api.${var.service_discovery_namespace}:8000/v1" }],
     )
     secrets = local.common_secrets
+
+    # livekit-agents sobe sozinho um health check HTTP em 0.0.0.0:8081 (modo
+    # produção, comando "start") que responde 200 só quando o worker está
+    # conectado ao LiveKit server e operando normalmente — ver
+    # https://docs.livekit.io/agents/server/options.md#health-check-endpoint.
+    healthCheck = {
+      command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8081/', timeout=3)\""]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
 
     logConfiguration = {
       logDriver = "awslogs"
