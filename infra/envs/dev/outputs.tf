@@ -23,7 +23,13 @@ output "api_internal_url" {
 }
 
 output "api_public_url" {
-  value = "http://${aws_lb.rumolog.dns_name}"
+  description = "URL HTTPS pública da api (CloudFront na frente do ALB, sem domínio próprio)."
+  value       = "https://${aws_cloudfront_distribution.api.domain_name}"
+}
+
+output "api_public_url_http_alb_direto" {
+  description = "DNS name HTTP puro do ALB (debug/uso interno; não usar de página HTTPS por causa de mixed content)."
+  value       = "http://${aws_lb.rumolog.dns_name}"
 }
 
 output "app_secret_arns" {

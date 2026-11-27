@@ -1,8 +1,9 @@
 # Exposicao publica da api (so dela — voice-agent nao recebe HTTP, so fala
-# pra fora via LiveKit/Twilio). HTTP por enquanto: sem dominio/certificado
-# ACM proprio pra esse app ainda, entao sem HTTPS no ALB nesta primeira
-# volta (rodar-web/rodar-mobile em HTTPS vao bloquear fetch misto — ver
-# infra/README.md).
+# pra fora via LiveKit/Twilio). O ALB em si so tem listener HTTP/80 (sem
+# dominio/certificado ACM proprio pra esse app) — o HTTPS exposto pro
+# cliente final vem do CloudFront na frente dele (ver cloudfront.tf e
+# infra/README.md). Nao expor o DNS name do ALB direto pra paginas HTTPS
+# (rodar-web/rodar-mobile): usar sempre o output `api_public_url`.
 
 data "aws_subnets" "public" {
   filter {

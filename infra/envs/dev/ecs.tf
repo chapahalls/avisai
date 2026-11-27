@@ -14,7 +14,9 @@ locals {
     AUTH_OBRIGATORIA               = "true"
     AUTH_TOKEN_VALIDADE_H          = "12"
     CORS_ORIGENS                   = jsonencode(var.cors_origins)
-    PUBLIC_URL                     = "http://${aws_lb.rumolog.dns_name}"
+    # HTTPS via CloudFront (ver cloudfront.tf) — usado pra montar o link da
+    # página do recebedor (app/servicos/ligacoes.py) e no /health.
+    PUBLIC_URL                     = "https://${aws_cloudfront_distribution.api.domain_name}"
     LIGACOES_MANUAIS_MAX           = "5"
     LIGACOES_MANUAIS_JANELA_S      = "600"
     RECEBEDOR_MODO                 = "rtc"

@@ -16,23 +16,32 @@ conta.
   criada aqui), ECS Fargate (cluster dedicado `rumolog-cluster-dev`, sem
   compartilhar com o `sginfra-cluster-dev`), Cloud Map (`rumolog.internal`,
   usado pelo voice-agent pra falar com a api), ALB público
-  (`rumolog-dev-alb`, só HTTP/80 por enquanto — ver caveat de HTTPS abaixo)
-  expondo a api pra fora da VPC, RDS Postgres (`rumolog-dev-db`), ECR,
-  Secrets Manager.
+  (`rumolog-dev-alb`, só HTTP/80 — ver HTTPS abaixo) expondo a api pra fora
+  da VPC, CloudFront na frente do ALB (`cloudfront.tf`, HTTPS pra fora sem
+  domínio próprio), RDS Postgres (`rumolog-dev-db`), ECR, Secrets Manager.
 
 ## Deploy em produção: URL pública e migração
 
-A api está no ar em `http://rumolog-dev-alb-<id>.us-east-1.elb.amazonaws.com`
-(ver output `api_public_url`). `alembic upgrade head` e `python -m app.seed`
-rodam automaticamente no `CMD` do container (`backend/Dockerfile`) antes do
+A api está no ar em `https://<id>.cloudfront.net` (ver output
+`api_public_url`). `alembic upgrade head` e `python -m app.seed` rodam
+automaticamente no `CMD` do container (`backend/Dockerfile`) antes do
 `uvicorn` subir — já confirmado rodando contra o `rumolog-dev-db` novo.
 
-**Caveat HTTPS**: `rodar-web`/`rodar-mobile` são servidos via GitHub Pages
-(HTTPS). Chamar um endpoint HTTP puro de uma página HTTPS é bloqueado pelo
-navegador (mixed content). Enquanto o ALB não tiver TLS, isso só funciona
-abrindo a URL do ALB direto (sem ser via fetch de uma página HTTPS). Opções
-pra resolver: CloudFront na frente do ALB (TLS grátis em `*.cloudfront.net`,
-sem precisar de domínio próprio) ou ACM + domínio custom no ALB.
+**HTTPS sem domínio próprio**: o ALB (`alb.tf`) só tem listener HTTP/80 —
+sem domínio registrado pra esse app não tem como emitir um certificado ACM
+nele. `rodar-web`/`rodar-mobile` são servidos via GitHub Pages (HTTPS), e
+chamar um endpoint HTTP puro de uma página HTTPS é bloqueado pelo navegador
+(mixed content). A solução (`cloudfront.tf`) é colocar uma distribuição
+CloudFront na frente do ALB: ela já vem com certificado TLS válido no
+domínio compartilhado `*.cloudfront.net`, emitido automaticamente pela AWS,
+sem custo e sem precisar comprovar posse de domínio nenhum. O tráfego
+CloudFront → ALB continua em HTTP (`origin_protocol_policy = "http-only"`),
+mas isso é interno à rede da AWS, não exposto ao cliente final. Cache fica
+desabilitado (`Managed-CachingDisabled` + `Managed-AllViewer`) porque é uma
+api, não um site estático — toda request (headers, query string, cookies,
+`Authorization`) passa direto pro ALB. `rodar-web`/`rodar-mobile` devem
+apontar pra `api_public_url` (CloudFront), nunca pro DNS name do ALB
+direto.
 
 **Pegadinha de rede já resolvida**: as tasks ECS ficam nas subnets privadas,
 e o tráfego pra `logs`/`ssmmessages`/`secretsmanager`(parcial)/`efs` passa
