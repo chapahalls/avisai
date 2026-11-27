@@ -26,7 +26,6 @@ from app.infra.models import Evento, SessaoAgente, agora  # noqa: E402
 from app.servicos import consultas  # noqa: E402
 
 API = os.getenv("AVALIAR_API", "http://localhost:8000")
-SEGREDO = os.getenv("LLM_SHARED_SECRET", "")
 IGNORAR = {"fala_motorista", "fala_agente", "alerta_motorista", "evento_app"}
 
 # (fala do motorista, checagem opcional sobre (resposta, eventos novos))
@@ -126,7 +125,6 @@ def rodar(nome: str, cenario: dict, rota: int) -> tuple[int, int]:
         req(metodo, caminho.format(rota=rota), corpo)
     sid = abrir_sessao(rota)
     historico = [{"role": "system", "content": sistema}, {"role": "assistant", "content": saudacao}]
-    headers = {"Authorization": f"Bearer {SEGREDO}"} if SEGREDO else {}
     ok = falhas = 0
     print(f"\n### {nome}: {cenario['descricao']}\n")
     try:
@@ -134,7 +132,7 @@ def rodar(nome: str, cenario: dict, rota: int) -> tuple[int, int]:
             desde = ultimo_evento_id(rota)
             historico.append({"role": "user", "content": fala})
             status, corpo = req("POST", f"/v1/chat/completions?sessao={sid}",
-                                {"stream": False, "messages": historico}, headers)
+                                {"stream": False, "messages": historico})
             resposta = corpo["choices"][0]["message"]["content"] if status == 200 else f"[HTTP {status}] {corpo}"
             historico.append({"role": "assistant", "content": resposta})
             novos = eventos_desde(rota, desde)

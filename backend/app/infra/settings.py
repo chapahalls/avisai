@@ -48,7 +48,6 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
     llm_max_tokens: int = 150
-    llm_shared_secret: str = ""
 
     # Acesso: token JWT assinado no /auth/sso. Ligado por padrão: escrita exige token, ações da central exigem
     # papel "cco" e o motorista só mexe na própria rota. Desligue (AUTH_OBRIGATORIA=false) só em desenvolvimento.

@@ -33,8 +33,8 @@ O áudio WebRTC e o worker de voz rodam no **LiveKit**. Os clientes publicam áu
 | **Demo no ar** | [painel do CCO e site no modo Demo](https://rodarglobal.github.io/rodar-web/) (clique em **Entrar com SSO**) · [app do motorista no navegador](https://rodarglobal.github.io/rodar-mobile/) |
 | **Ver sem instalar nada** | [tour em vídeo de 1 min](https://github.com/rodarglobal/rodar-web/blob/main/docs/assets/readme/tour.mp4) do site e do painel · [tour do app do motorista (1 min)](https://github.com/rodarglobal/rodar-mobile/blob/main/docs/assets/readme/tour.mp4) · [validação ponta a ponta histórica, anterior à troca do provedor de voz](https://github.com/rodarglobal/rodar-backend/blob/main/evidence/validacao.md) · [telas do app](https://github.com/rodarglobal/rodar-mobile#telas-do-aplicativo) |
 | **Repositórios** | [rodar-backend](https://github.com/rodarglobal/rodar-backend) (este) · [rodar-web](https://github.com/rodarglobal/rodar-web) · [rodar-mobile](https://github.com/rodarglobal/rodar-mobile) |
-| **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 554 testes automatizados: 318 no backend, 127 no web, 109 no mobile |
-| **Segurança** | JWT assinado no login e exigido em toda escrita (padrão), papel `cco` nas ações da central, motorista só na própria rota, CORS restrito, segredo do LLM e limite de ligações. O que falta para produção está [escrito aqui](#o-que-falta-para-produção) |
+| **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 568 testes automatizados: 332 no backend, 127 no web, 109 no mobile |
+| **Segurança** | JWT assinado no login e exigido em toda escrita (padrão), papel `cco` nas ações da central, motorista só na própria rota, CORS restrito e limite de ligações. O que falta para produção está [escrito aqui](#o-que-falta-para-produção) |
 | **O que é simulado** | login sem senha, GPS da rota, documentos fiscais e o modo Demo do painel: [lista completa](#simulado--pré-existente-e5e8) |
 | **Glossário** | **CCO**: a central de operações da transportadora · **recebedor**: quem descarrega (CD, atacado, loja) · **doca**: o portão de descarga · **estadia**: o valor que a lei manda pagar pelo caminhão parado além de 5 h (a **franquia**; Lei 11.442) · **geocerca**: o raio em volta do destino que marca a chegada · **Task**: o pedido que o CCO precisa responder |
 <!-- Vídeo de 3 min do Hack Brasil: incluir a linha aqui antes de 30/11. -->
@@ -98,12 +98,17 @@ docker compose run --rm test ruff check .   # lint (o mesmo do CI)
 ```
 
 - A api fica em `http://localhost:8000`, com a doc interativa em `/docs`. `curl localhost:8000/health` mostra a URL pública do túnel (`public_url`).
-- O worker usa a rede interna do Compose para chamar `/v1/chat/completions`; o túnel serve aos clientes fora da rede. A URL do quick tunnel é descoberta sozinha, e pode ser fixada em `PUBLIC_URL`.
+- O worker usa a rede interna do Compose para chamar `/v1/voice/context`, `/v1/voice/turn` e `/v1/voice/tool` (contexto, transcrição e ferramentas da conversa Gemini Live); `/v1/chat/completions` é o mesmo gateway de texto, só que para os clientes HTTP (scripts de validação/avaliação e o diálogo simulado). O túnel serve aos clientes fora da rede. A URL do quick tunnel é descoberta sozinha, e pode ser fixada em `PUBLIC_URL`.
 - **Se o túnel reiniciar, a URL muda.** Abra uma nova sessão depois disso.
 - Para a demo, use `ESTADIA_ACELERACAO=600` (1 s real conta 10 min de estadia) e `CCO_INTERVALO_S=20`.
 
 ### Roteiro da demo
-1. `curl -X POST localhost:8000/rotas/1/reset`: deixa a rota pronta.
+0. Com `AUTH_OBRIGATORIA=true` (o padrão), faça login como central antes de qualquer `curl` de escrita — sem isso, o passo 1 abaixo devolve 401:
+   ```bash
+   TOKEN=$(curl -s -X POST localhost:8000/auth/sso -H 'Content-Type: application/json' \
+     -d '{"email":"cco@avisai.test"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+   ```
+1. `curl -X POST localhost:8000/rotas/1/reset -H "Authorization: Bearer $TOKEN"`: deixa a rota pronta.
 2. Abra `{PUBLIC_URL}/teste` (cliente mínimo do motorista) e clique em **Iniciar conversa**. O agente saúda em PT-BR, e dá para interrompê-lo falando por cima (barge-in).
 3. `make sim ARGS="--desde 25"`: o caminhão anda.
    - Na aproximação (ETA ≤ 15 min), o agente avisa por voz.
@@ -112,7 +117,7 @@ docker compose run --rm test ruff check .   # lint (o mesmo do CI)
 5. Abra `{PUBLIC_URL}/recebedor`, clique em **Atender** e responda algo como "A doca 4 libera em 40 minutos". A resposta vai para a Task e o agente do motorista repassa por voz.
 6. Diga ao agente "descarreguei": a estadia é encerrada com o valor final.
 
-Para refazer: `POST /rotas/1/reset`, ou o botão "Reset da demo" na `/teste`.
+Para refazer: `POST /rotas/1/reset` com o mesmo header `Authorization: Bearer $TOKEN` do passo 0, ou o botão "Reset da demo" na `/teste` (que já usa o login feito pelo navegador).
 
 ---
 
@@ -124,11 +129,10 @@ Para refazer: `POST /rotas/1/reset`, ou o botão "Reset da demo" na `/teste`.
 | Login obrigatório | `AUTH_OBRIGATORIA=true` é o padrão: toda escrita exige `Authorization: Bearer <token>` (401 sem token). A api não sobe se `AUTH_SEGREDO` tiver menos de 32 caracteres. `false` só em desenvolvimento local | `infra/settings.py`, `main.py` (`checar_segredo_auth`) |
 | Papel da central | publicar e atribuir rota, cadastrar motorista, assumir Task, responder chamado, mandar mensagem ou pedido ao motorista, anexar arquivo, atender chamada e ligar pelo CCO exigem papel `cco` (403 com papel errado) | `api/deps.py` (`exigir_cco`) |
 | Dono da rota | GPS, chegada, descarga, ligação ao recebedor, reset, arquivos, falas offline, sessão de voz, `/agent/*`, `/call/receiver`, outbox (`POST /events`) e token LiveKit: o motorista só age na rota atribuída a ele (claim `driverId`, 403 na rota de outro); a central age em qualquer rota | `api/deps.py` (`exigir_acesso_rota`, `exigir_acesso_sessao`) |
-| LLM próprio | o worker LiveKit manda `LLM_SHARED_SECRET` como Bearer; a comparação é exata e em tempo constante. Sem segredo, a api avisa no log | `api/llm.py` |
 | CORS | só as origens de `CORS_ORIGENS` (painel local e a demo publicada) | `main.py` |
 | Custo de telefonia | no máximo `LIGACOES_MANUAIS_MAX` ligações manuais por rota a cada `LIGACOES_MANUAIS_JANELA_S` (429 depois disso); as ligações automáticas do agente não entram no limite | `infra/auth.py`, `api/deps.py` |
 
-Testes em `tests/api/test_auth.py`. `GET /health` mostra `auth_obrigatoria` e `llm_protegido`. As páginas de teste em `static/` e os clientes de exemplo em `clients/` não mandam token: use-os com `AUTH_OBRIGATORIA=false`. `scripts/simular_rota.py` e `scripts/validar_fluxos.py` entram como central.
+Testes em `tests/api/test_auth.py`. `GET /health` mostra `auth_obrigatoria`. As páginas de teste em `static/` e os clientes de exemplo em `clients/` não mandam token: use-os com `AUTH_OBRIGATORIA=false`. `scripts/simular_rota.py` e `scripts/validar_fluxos.py` entram como central.
 
 ### O que falta para produção
 
@@ -144,6 +148,7 @@ O que está acima basta para a demo, não para operar com dados reais. Falta, em
 | Dados pessoais (LGPD) | transcrições, GPS e telefones no banco e em `ARQUIVOS_DIR` | aviso ao motorista, prazo de retenção, registro de quem acessou, backup cifrado | voz e localização de trabalhador são dados pessoais |
 | Limites com várias instâncias | `infra/auth.py` (`LimiteChamadas`, em memória) | mover o limite de ligações para Redis | em memória, cada instância conta sozinha |
 | Rotas de demonstração | `POST /rotas/{id}/reset` | remover em produção | apaga o histórico da viagem |
+| Gateway do LLM sem segredo próprio | `api/llm.py` (`/v1/chat/completions`, `/v1/voice/*`) | exigir um segredo compartilhado de novo (ou mTLS) entre o worker LiveKit e a api, numa rede que hoje é só interna ao Compose | quem souber um `sessao_id`/`x-avisai-sessao` ativo chama essas rotas sem token; a proteção anterior (`LLM_SHARED_SECRET`) foi removida por ficar sempre vazia e nunca validar nada |
 
 ## Arquitetura
 
@@ -297,7 +302,10 @@ Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi
 | GET | `/token?room=&identity=` | — | token LiveKit de curta duração para uma identidade ativa autorizada |
 | POST | `/sessions` | `{rota_id}` | inicia o agente da viagem e devolve o token do motorista |
 | GET / DELETE / POST | `/sessions`<br>`/sessions/{id}`<br>`/sessions/{id}/speak` | — / — / `{texto, prioridade?}` | lista, encerra ou pede uma fala manual para teste |
-| POST | `/v1/chat/completions` | OpenAI compatível | gateway interno do LLM usado pelo worker LiveKit; não é endpoint de frontend |
+| POST | `/v1/chat/completions` | OpenAI compatível | gateway de texto do LLM usado pelo diálogo simulado (scripts de validação/avaliação) e pelos testes; não é o endpoint da conversa de voz nem de frontend |
+| GET | `/v1/voice/context` | — | estado atual da operação (resumo da rota, Task, estadia); o worker LiveKit busca antes de iniciar a sessão com o Gemini Live |
+| POST | `/v1/voice/turn` | `{role, text}` | persiste cada turno transcrito da conversa de voz e devolve o estado atualizado; chamado pelo worker a cada fala |
+| POST | `/v1/voice/tool` | `{name, arguments, utterance}` | executa no backend a ferramenta chamada pelo modelo Gemini Live (mesma lógica de domínio do `/v1/chat/completions`) |
 
 ### Rotas, motoristas, arquivos e comunicação
 

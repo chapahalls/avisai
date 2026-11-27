@@ -23,7 +23,6 @@ from datetime import datetime, timedelta, timezone
 BRT = timezone(timedelta(hours=-3))
 
 API = os.getenv("VALIDAR_API", "http://localhost:8000")
-SEGREDO = os.getenv("LLM_SHARED_SECRET", "")
 RESULTADOS: list[tuple[str, bool, str]] = []
 
 
@@ -58,9 +57,8 @@ def req(metodo: str, caminho: str, corpo=None, headers=None, autenticar=True):
 
 def falar(sessao_id: int, fala: str) -> str:
     """Simula uma fala enviada pelo agente de voz e devolve a resposta do gateway."""
-    h = {"Authorization": f"Bearer {SEGREDO}"} if SEGREDO else {}
     _, txt = req("POST", f"/v1/chat/completions?sessao={sessao_id}",
-                 {"stream": True, "messages": [{"role": "user", "content": fala}]}, h)
+                 {"stream": True, "messages": [{"role": "user", "content": fala}]})
     partes = []
     for linha in str(txt).splitlines():
         if linha.startswith("data: ") and linha[6:] != "[DONE]":

@@ -4,8 +4,6 @@ import json
 from tests.fakes import tool_call
 from tests.helpers import eventos
 
-AUTH = {"Authorization": "Bearer segredo"}
-
 
 def corpo(fala: str) -> dict:
     return {"stream": True, "messages": [{"role": "system", "content": "p"}, {"role": "user", "content": fala}]}
@@ -36,7 +34,7 @@ async def test_llm_abre_o_mapa_no_app(client, container, fake_llm):
     sid = await _sessao(client)
     ws = container.eventos.assinar(rota_id=1)
     fake_llm.respostas = [tool_call("comandar_app", '{"acao":"abrir_tela","tela":"mapa"}'), "Abrindo o mapa."]
-    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("abre o mapa aí"), headers=AUTH)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("abre o mapa aí"))
     assert sse(r.text).strip() == "Abrindo o mapa."
     assert _acoes(ws) == [{"rota_id": 1, "acao": "open_screen", "tela": "mapa"}]
 
@@ -45,10 +43,10 @@ async def test_sair_da_conta_sem_confirmacao_nao_chega_ao_app(client, container,
     sid = await _sessao(client)
     ws = container.eventos.assinar(rota_id=1)
     fake_llm.respostas = [tool_call("comandar_app", '{"acao":"sair_da_conta"}'), "Quer mesmo sair da conta?"]
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("quero sair da conta"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("quero sair da conta"))
     assert _acoes(ws) == []
     fake_llm.respostas = [tool_call("comandar_app", '{"acao":"sair_da_conta","confirmado":true}'), "Até mais!"]
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("confirmo"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("confirmo"))
     assert _acoes(ws) == [{"rota_id": 1, "acao": "logout"}]
 
 
@@ -56,9 +54,9 @@ async def test_sem_llm_a_contingencia_abre_documento_e_encerra(client, container
     container.settings.llm_api_key = ""
     sid = await _sessao(client)
     ws = container.eventos.assinar(rota_id=1)
-    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Abre a nota fiscal"), headers=AUTH)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Abre a nota fiscal"))
     assert "nota fiscal" in sse(r.text)
-    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("pode encerrar a conversa"), headers=AUTH)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("pode encerrar a conversa"))
     assert "encerrando" in sse(r.text)
     assert _acoes(ws) == [
         {"rota_id": 1, "acao": "open_document", "documento": "NF-e"},
@@ -68,7 +66,7 @@ async def test_sem_llm_a_contingencia_abre_documento_e_encerra(client, container
 
 async def test_ferramenta_vai_para_o_llm_do_motorista(client, fake_llm):
     sid = await _sessao(client)
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("oi"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("oi"))
     nomes = {f["function"]["name"] for f in fake_llm.recebidas[-1]["ferramentas"]}
     assert "comandar_app" in nomes
 
@@ -77,11 +75,11 @@ async def test_sem_llm_sair_da_conta_nao_vira_inicio_de_viagem(client, container
     container.settings.llm_api_key = ""
     sid = await _sessao(client)
     ws = container.eventos.assinar(rota_id=1)
-    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("quero sair da conta"), headers=AUTH)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("quero sair da conta"))
     assert "confirmo" in sse(r.text).lower()
     assert _acoes(ws) == []
     assert not eventos("retirada")
-    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("confirmo, sair da conta"), headers=AUTH)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("confirmo, sair da conta"))
     assert _acoes(ws) == [{"rota_id": 1, "acao": "logout"}]
 
 
@@ -121,12 +119,12 @@ async def test_sem_llm_navega_liga_gps_e_repete(client, container):
     container.settings.llm_api_key = ""
     sid = await _sessao(client)
     ws = container.eventos.assinar(rota_id=1)
-    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("me leva até o recebedor"), headers=AUTH)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("me leva até o recebedor"))
     assert "mapa" in sse(r.text)
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("liga o GPS"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("liga o GPS"))
     assert [a["acao"] for a in _acoes(ws)] == ["open_navigation", "start_gps"]
     await VozLiveKit(container).falar_motorista(1, "O CCO respondeu: pode descarregar na doca 2.")
-    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("repete"), headers=AUTH)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("repete"))
     assert "doca 2" in sse(r.text)
 
 
@@ -142,7 +140,7 @@ async def test_sem_llm_documento_andando_avisa_que_abre_parado(client, container
         s.add(r)
         s.commit()
     ws = container.eventos.assinar(rota_id=1)
-    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("abre a nota fiscal"), headers=AUTH)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("abre a nota fiscal"))
     assert "parar" in sse(r.text)
     assert _acoes(ws) == [{"rota_id": 1, "acao": "open_document", "documento": "NF-e"}]  # o app adia
 
@@ -155,20 +153,20 @@ async def test_recado_ao_cco_abre_chamado_e_problema_vira_ocorrencia(client, con
 
     container.settings.llm_api_key = ""
     sid = await _sessao(client)
-    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("avisa o CCO que vou parar pra almoçar"), headers=AUTH)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("avisa o CCO que vou parar pra almoçar"))
     assert "Mandei pro CCO" in sse(r.text)
     with sessao() as s:
         [ch] = s.exec(select(ChamadoCCO)).all()
         assert ch.tipo == "mensagem" and ch.descricao == "vou parar pra almoçar"
         assert s.exec(select(Ocorrencia)).all() == []
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("avisa o CCO que a doca tá ocupada"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("avisa o CCO que a doca tá ocupada"))
     with sessao() as s:
         assert [o.tipo for o in s.exec(select(Ocorrencia)).all()] == ["doca_ocupada"]
 
 
 async def test_llm_recebe_a_ferramenta_de_recado(client, fake_llm):
     sid = await _sessao(client)
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("oi"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("oi"))
     nomes = {f["function"]["name"] for f in fake_llm.recebidas[-1]["ferramentas"]}
     assert {"comandar_app", "enviar_mensagem_cco"} <= nomes
 
@@ -181,7 +179,7 @@ async def test_reset_funciona_com_ocorrencia_que_abriu_chamado(client, container
 
     container.settings.llm_api_key = ""
     sid = await _sessao(client)
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("furou o pneu"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("furou o pneu"))
     with sessao() as s:
         assert s.exec(select(ChamadoCCO)).all() and s.exec(select(Ocorrencia)).all()
     r = await client.post("/rotas/1/reset")

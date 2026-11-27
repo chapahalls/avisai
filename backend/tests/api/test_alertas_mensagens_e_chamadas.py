@@ -9,8 +9,6 @@ from app.infra.models import ChamadaAgente, MensagemMotorista
 from tests.fakes import tool_call
 from tests.helpers import eventos
 
-AUTH = {"Authorization": "Bearer segredo"}
-
 
 def corpo(fala: str) -> dict:
     return {
@@ -31,7 +29,6 @@ async def test_fala_do_motorista_publica_alerta_critico_e_decisao(client, fake_l
     response = await client.post(
         f"/v1/chat/completions?sessao={sid}",
         json=corpo("Meu pneu furou, vou atrasar uma hora."),
-        headers=AUTH,
     )
 
     assert response.status_code == 200
@@ -50,7 +47,7 @@ async def test_tool_ligar_registra_falha_twilio_e_fallback_livekit_atendivel(cli
         "Estou acionando o operador.",
     ]
 
-    response = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Liga para o operador"), headers=AUTH)
+    response = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Liga para o operador"))
 
     assert response.status_code == 200
     with sessao() as s:
@@ -85,7 +82,6 @@ async def test_mensagem_cco_e_falada_e_resposta_permanece_na_thread(client, fake
     resposta = await client.post(
         f"/v1/chat/completions?sessao={sid}",
         json=corpo("Entendido, aguardando a liberação."),
-        headers=AUTH,
     )
     assert resposta.status_code == 200
     with sessao() as s:
