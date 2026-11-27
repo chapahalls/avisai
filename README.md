@@ -33,8 +33,8 @@ O áudio WebRTC e o worker de voz rodam no **LiveKit**. Os clientes publicam áu
 |---|---|
 | **Trilha** | Logística & automação |
 | **Em uma frase** | Um agente de voz que avisa o recebedor antes da chegada, conta a estadia do caminhão parado (Lei 11.442) e só chama a central quando alguém precisa decidir. |
-| **Demo no ar** | [painel do CCO e site no modo Demo](https://rodarglobal.github.io/rodar-web/) (clique em **Entrar com SSO**) · [app do motorista no navegador](https://rodarglobal.github.io/rodar-mobile/) |
-| **API em produção** | backend com deploy contínuo na **Vercel**: [rodar-backend-five.vercel.app/docs](https://rodar-backend-five.vercel.app/docs) — **temporário, só para o Hack Brasil**, com ressalvas; leia [abaixo](#já-em-produção-temporário-para-o-hack-brasil) antes de usar |
+| **Demo no ar** | [painel do CCO, deploy de produção na Vercel](https://rodar-web-beta.vercel.app/login) · [painel do CCO e site no modo Demo](https://rodarglobal.github.io/rodar-web/) (clique em **Entrar com SSO**) · [app do motorista no navegador](https://rodarglobal.github.io/rodar-mobile/) |
+| **API em produção** | backend persistente na **AWS** (ECS Fargate + RDS Postgres gerenciado), HTTPS sem domínio próprio via CloudFront: [d3fy4m7zwukr3x.cloudfront.net/docs](https://d3fy4m7zwukr3x.cloudfront.net/docs) · também em deploy contínuo na **Vercel**: [rodar-backend-five.vercel.app/docs](https://rodar-backend-five.vercel.app/docs) — esse é **temporário, só para o Hack Brasil**, sem banco; leia [abaixo](#já-em-produção-temporário-para-o-hack-brasil) antes de usar |
 | **Ver sem instalar nada** | [tour em vídeo de 1 min](https://github.com/rodarglobal/rodar-web/blob/main/docs/assets/readme/tour.mp4) do site e do painel · [tour do app do motorista (1 min)](https://github.com/rodarglobal/rodar-mobile/blob/main/docs/assets/readme/tour.mp4) · [validação ponta a ponta histórica, anterior à troca do provedor de voz](https://github.com/rodarglobal/rodar-backend/blob/main/evidence/validacao.md) (33/33, era Agora, LLM em contingência; **o caminho de voz atual, no LiveKit, ainda não tem uma validação ponta a ponta publicada**) · [telas do app](https://github.com/rodarglobal/rodar-mobile#telas-do-aplicativo) |
 | **Repositórios** | [rodar-backend](https://github.com/rodarglobal/rodar-backend) (este) · [rodar-web](https://github.com/rodarglobal/rodar-web) · [rodar-mobile](https://github.com/rodarglobal/rodar-mobile) |
 | **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 615 testes automatizados: 379 no backend, 127 no web, 109 no mobile · neste repo, CI no GitHub Actions seguido de deploy automático na Vercel |
@@ -81,6 +81,15 @@ Os frontends devem conservar essa distinção. Não use um campo ausente da API 
   - Twilio, só para a ligação telefônica real, que é opcional.
 
 ## Como rodar
+
+### Já em produção: AWS (persistente, com banco e HTTPS)
+
+Além da Vercel (abaixo), o backend também está no ar numa infra persistente na conta AWS **dev** da Rumo (`140147589257`, `us-east-1`), criada com OpenTofu em [`infra/`](infra/):
+
+- **URL pública (HTTPS):** [`https://d3fy4m7zwukr3x.cloudfront.net`](https://d3fy4m7zwukr3x.cloudfront.net) — doc interativa em [`/docs`](https://d3fy4m7zwukr3x.cloudfront.net/docs). `GET /health` confere o banco de verdade.
+- **O que está no ar:** `api` e `voice-agent` como processos de longa duração no **ECS Fargate** (não serverless — resolve a limitação da Vercel abaixo), Postgres gerenciado no **RDS**, segredos no **Secrets Manager**, rede privada na VPC compartilhada da conta.
+- **HTTPS sem domínio próprio:** o ALB interno só fala HTTP; a URL pública passa pelo **CloudFront** na frente dele, que já vem com certificado TLS válido no domínio compartilhado `*.cloudfront.net` — sem precisar registrar/validar um domínio. Detalhe técnico em [`infra/README.md`](infra/README.md) e [`infra/envs/dev/cloudfront.tf`](infra/envs/dev/cloudfront.tf).
+- **Ainda não é o ambiente de produção definitivo:** é a conta AWS **dev** da Rumo, RDS sem Multi-AZ, sem domínio próprio (só o da CloudFront) e o segredo do Twilio ainda está como placeholder (`twilio_configurado: false` no `/health`) — nada disso derruba a api, só limita a ligação telefônica real.
 
 ### Já em produção (temporário, para o Hack Brasil)
 
@@ -158,12 +167,12 @@ O que está acima basta para a demo, não para operar com dados reais. Falta, em
 
 | O quê | Onde | Como | Por quê |
 |---|---|---|---|
-| Deploy persistente com banco gerenciado | Vercel (serverless, sem `DATABASE_URL`) | VM ou container de longa duração (Fly, Render, Railway) com Postgres gerenciado e `voice-agent` como processo separado — [detalhe acima](#já-em-produção-temporário-para-o-hack-brasil) | serverless não sustenta as tarefas de fundo, o WebSocket nem o SSE que o fluxo da central depende |
+| Deploy persistente com banco gerenciado | ~~Vercel (serverless, sem `DATABASE_URL`)~~ **resolvido** via AWS (ECS Fargate + RDS) — [detalhe acima](#já-em-produção-aws-persistente-com-banco-e-https) | promover a mesma infra pra uma conta de produção definitiva da Rumo (hoje é a conta **dev**), com RDS Multi-AZ | a conta/infra atual já é persistente e tem banco de verdade, mas ainda não é o ambiente de produção final |
 | Login de verdade | `api/compat.py` (`/auth/sso`) e telas de login do app e do painel | central com o SSO da empresa (OIDC) ou senha com hash Argon2; motorista com código por SMS | hoje não há senha: quem conhece um e-mail do seed entra com aquele papel |
 | 2FA para a central | `infra/auth.py` e uma tabela de fatores; tela de código no painel | TOTP com app autenticador, obrigatório para o papel `cco`, com códigos de recuperação | a central publica rotas, dispara ligações pagas e vê dados de motoristas |
 | Leituras protegidas | `GET /rotas`, `/cco/*`, `/eventos`, `/api/*`, SSE e WebSocket | mesmo token das escritas; o motorista vê só a própria rota | transcrições, GPS e telefones ainda podem ser lidos sem login |
 | Sessão segura | `api/deps.py` (`?token=` no SSE e WebSocket) | token de 15 min com refresh rotativo e revogação; ticket de uso único no WebSocket; `expo-secure-store` no app e cookie HttpOnly no painel | token na URL vaza em logs; hoje ele vale 12 h e não dá para revogar |
-| Segredos e HTTPS | `.env`, deploy por túnel temporário ou Vercel sem banco | domínio próprio com HTTPS, segredos num cofre, CORS só para o domínio de produção | nem túnel temporário nem a Vercel de hoje são produção |
+| Domínio próprio e cofre de segredos completo | `infra/` (AWS): HTTPS já resolvido via CloudFront (`*.cloudfront.net`), segredos no Secrets Manager, mas o segredo do Twilio ainda é placeholder | domínio próprio emitindo certificado ACM, preencher o segredo do Twilio, CORS só para o domínio de produção final | HTTPS e cofre de segredos já existem; falta o domínio da empresa e fechar o último segredo pendente |
 | Dados pessoais (LGPD) | transcrições, GPS e telefones no banco e em `ARQUIVOS_DIR` | aviso ao motorista, prazo de retenção, registro de quem acessou, backup cifrado | voz e localização de trabalhador são dados pessoais |
 | Limites com várias instâncias | `infra/auth.py` (`LimiteChamadas`, em memória) | mover o limite de ligações para Redis | em memória, cada instância conta sozinha |
 | Rotas de demonstração | `POST /rotas/{id}/reset` | remover em produção | apaga o histórico da viagem |
