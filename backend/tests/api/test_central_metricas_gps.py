@@ -7,7 +7,6 @@ from app.infra.models import EventoGeo
 from tests.fakes import tool_call
 from tests.helpers import eventos
 
-AUTH = {"Authorization": "Bearer segredo"}
 DESTINO = {"lat": -22.9057, "lng": -47.0609}
 
 
@@ -23,7 +22,7 @@ async def test_central_pergunta_agente_repassa_e_resposta_volta_estruturada(clie
     assert r.status_code == 200 and r.json()["status"] == "perguntada"
     assert any("A central pergunta" in f and "lacre" in f for f in fake_livekit.falas())
     fake_llm.respostas = [tool_call("responder_central", '{"resposta":"lacre 4471"}'), "Passei pra central."]
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("o lacre é 4471"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("o lacre é 4471"))
     sols = (await client.get("/rotas/1/solicitacoes")).json()
     assert sols[0]["status"] == "respondida" and sols[0]["resposta"] == "lacre 4471"
     assert eventos("resposta_central")
@@ -32,7 +31,7 @@ async def test_central_pergunta_agente_repassa_e_resposta_volta_estruturada(clie
 async def test_pergunta_pendente_vai_no_estado_do_llm(client, fake_llm):
     sid = (await client.post("/sessions", json={"rota_id": 1})).json()["id"]
     await client.post("/rotas/1/solicitacoes", json={"pergunta": "Qual o número do lacre?"})
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("oi"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("oi"))
     sistema = " ".join(m["content"] for m in fake_llm.recebidas[-1]["mensagens"] if m["role"] == "system")
     assert "lacre" in sistema
     assert "responder_central" in {f["function"]["name"] for f in fake_llm.recebidas[-1]["ferramentas"]}

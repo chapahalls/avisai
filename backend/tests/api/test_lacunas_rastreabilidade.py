@@ -11,7 +11,6 @@ from app.infra.models import Estadia, EventoGeo, LigacaoRecebedor
 from tests.fakes import tool_call
 from tests.helpers import esperar, eventos
 
-AUTH = {"Authorization": "Bearer segredo"}
 DESTINO = {"lat": -22.9057, "lng": -47.0609, "velocidade_kmh": 5}
 NO_CAMINHO = {"lat": -23.05, "lng": -46.98, "velocidade_kmh": 60}
 
@@ -40,7 +39,7 @@ async def test_voz_confirma_e_valida_a_chegada(client, fake_llm):
     await client.post("/rotas/1/posicao", json={**DESTINO, "fonte": "rastreador"})
     await client.post("/rotas/1/posicao", json=DESTINO)
     fake_llm.respostas = [tool_call("confirmar_chegada", "{}"), "Chegada confirmada."]
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Confirmo, cheguei"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Confirmo, cheguei"))
     geo = _chegada()
     assert geo.status == "validado" and geo.confirmacao_voz_transcricao == "Confirmo, cheguei"
 
@@ -50,14 +49,14 @@ async def test_voz_nao_valida_se_gps_divergir(client, fake_llm):
     await client.post("/rotas/1/posicao", json={"lat": -22.95, "lng": -47.0608, "fonte": "rastreador"})
     await client.post("/rotas/1/posicao", json=DESTINO)
     fake_llm.respostas = [tool_call("confirmar_chegada", "{}"), "Ok."]
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Confirmo"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Confirmo"))
     assert _chegada().status == "nao_validado"
 
 
 async def test_chegada_pendente_vai_no_estado_do_llm(client, fake_llm):
     sid = (await client.post("/sessions", json={"rota_id": 1})).json()["id"]
     await client.post("/rotas/1/posicao", json=DESTINO)
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("oi"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("oi"))
     sistema = " ".join(m["content"] for m in fake_llm.recebidas[-1]["mensagens"] if m["role"] == "system")
     assert "Confirma a chegada" in sistema
 
@@ -67,7 +66,7 @@ async def test_contingencia_confirma_a_chegada(client, container):
     sid = (await client.post("/sessions", json={"rota_id": 1})).json()["id"]
     await client.post("/rotas/1/posicao", json={**DESTINO, "fonte": "rastreador"})
     await client.post("/rotas/1/posicao", json=DESTINO)
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Sim, confirmo"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Sim, confirmo"))
     assert _chegada().status == "validado"
 
 
@@ -108,7 +107,7 @@ async def test_atraso_na_estrada_liga_para_o_recebedor_com_novo_horario(client, 
     await client.post("/rotas/1/posicao", json=NO_CAMINHO)
     fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"atraso","descricao":"trânsito parado, uns 40 min de atraso"}'),
                           "Registrei e vou avisar o recebimento."]
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Vou atrasar uns 40 minutos"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Vou atrasar uns 40 minutos"))
     await esperar(lambda: eventos("aviso_recebedor"))
     with sessao() as s:
         lig = s.exec(select(LigacaoRecebedor)).one()
@@ -123,7 +122,7 @@ async def test_atraso_depois_da_chegada_nao_liga(client, fake_llm):
     sid = (await client.post("/sessions", json={"rota_id": 1})).json()["id"]
     await client.post("/rotas/1/chegada")
     fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"atraso","descricao":"atrasou a descarga"}'), "Ok."]
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("atrasou"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("atrasou"))
     import asyncio
 
     await asyncio.sleep(0.2)

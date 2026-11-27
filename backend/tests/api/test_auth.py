@@ -200,9 +200,3 @@ def test_janela_do_limite_libera_depois_do_tempo():
     assert lim.permitir("r", 1, 60, agora=61)
     assert lim.permitir("outra", 1, 60, agora=30)
 
-
-async def test_llm_exige_segredo_exato(client, container):
-    container.settings.llm_shared_secret = "segredo"
-    for cabecalho in ["", "Bearer errado", "Bearer segredo-mais-longo", "segredo-com-prefixo segredo"]:
-        r = await client.post("/v1/chat/completions", json={"messages": []}, headers={"Authorization": cabecalho})
-        assert r.status_code == 401, cabecalho

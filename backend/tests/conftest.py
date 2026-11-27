@@ -47,7 +47,6 @@ def settings() -> Settings:
         livekit_api_secret="test-secret",
         public_url="https://avisai.test",
         llm_api_key="sk-test",
-        llm_shared_secret="segredo",
         llm_mode="custom",
         recebedor_modo="rtc",
         cco_intervalo_s=0.01,

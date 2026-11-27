@@ -20,10 +20,7 @@ server = agents.AgentServer()
 
 
 def _backend_headers(session_id: int) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {settings.llm_shared_secret or 'rodar-local'}",
-        "x-avisai-sessao": str(session_id),
-    }
+    return {"x-avisai-sessao": str(session_id)}
 
 
 def _model_tools(role: str, session_id: int, utterance: dict[str, str]) -> list[Any]:

@@ -7,7 +7,6 @@ from app.servicos import ligacoes
 from tests.fakes import tool_call
 from tests.helpers import esperar, eventos, obter
 
-AUTH = {"Authorization": "Bearer segredo"}
 ORIGEM = {"lat": -23.1857, "lng": -46.8978, "velocidade_kmh": 0}
 PERTO = {"lat": -22.9956, "lng": -47.0608, "velocidade_kmh": 60}
 DESTINO = {"lat": -22.9057, "lng": -47.0609, "velocidade_kmh": 5}
@@ -40,7 +39,7 @@ async def test_motorista_confirma_retirada_por_voz(client, fake_llm):
     sid = await _sessao(client)
     await client.post("/rotas/1/posicao", json=ORIGEM)
     fake_llm.respostas = [tool_call("confirmar_retirada", '{"observacao":"carga ok"}'), "Retirada confirmada."]
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Confirmo, peguei a carga"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Confirmo, peguei a carga"))
     geo = _geo("RETIRADA")
     assert geo.status == "validado" and geo.confirmacao_voz_transcricao == "Confirmo, peguei a carga"
     assert eventos("retirada")
@@ -59,7 +58,7 @@ async def test_checkin_incompleto_pede_so_o_que_faltou(client, fake_llm):
     sid = await _sessao(client)
     await client.post("/rotas/1/chegada")
     fake_llm.respostas = [tool_call("registrar_checkin", '{"status_carga":"carga inteira"}'), "E o tempo de viagem?"]
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("A carga tá inteira"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("A carga tá inteira"))
     tool_msg = [m for m in fake_llm.recebidas[-1]["mensagens"] if m["role"] == "tool"][-1]
     assert "tempo_viagem" in tool_msg["content"] and "problemas" in tool_msg["content"]
     with sessao() as s:
@@ -73,8 +72,8 @@ async def test_checkin_completo_gera_relatorio(client, fake_llm):
     await client.post("/rotas/1/chegada")
     fake_llm.respostas = [tool_call("registrar_checkin", '{"status_carga":"ok"}'), "E o resto?",
                           tool_call("registrar_checkin", '{"tempo_viagem":"3 horas","problemas":"nenhum"}'), "Fechado."]
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("carga ok"), headers=AUTH)
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("três horas, sem problema"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("carga ok"))
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("três horas, sem problema"))
     with sessao() as s:
         rep = s.exec(select(Reporte).where(Reporte.tipo == "checkin")).one()
     assert rep.completo and rep.campos == {"status_carga": "ok", "tempo_viagem": "3 horas", "problemas": "nenhum"}
@@ -85,7 +84,7 @@ async def test_checkin_completo_gera_relatorio(client, fake_llm):
 async def test_relatorio_inicial_por_voz(client, fake_llm):
     sid = await _sessao(client)
     fake_llm.respostas = [tool_call("registrar_relatorio_inicial", '{"estado_caminhao":"ok","carga":"28 paletes"}'), "Boa viagem."]
-    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("caminhão ok, 28 paletes"), headers=AUTH)
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("caminhão ok, 28 paletes"))
     with sessao() as s:
         rep = s.exec(select(Reporte).where(Reporte.tipo == "inicial")).one()
     assert rep.completo

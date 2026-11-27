@@ -8,8 +8,6 @@ from app.infra.models import Ocorrencia
 from tests.fakes import tool_call
 from tests.helpers import eventos
 
-AUTH = {"Authorization": "Bearer segredo"}
-
 
 def corpo(fala):
     return {"stream": True, "messages": [{"role": "system", "content": "p"}, {"role": "user", "content": fala}]}
@@ -28,7 +26,7 @@ async def _sessao(client):
 
 
 async def _falar(client, sid, fala):
-    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo(fala), headers=AUTH)
+    r = await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo(fala))
     return sse(r.text)
 
 

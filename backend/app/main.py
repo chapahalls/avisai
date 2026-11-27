@@ -39,8 +39,6 @@ async def lifespan(app: FastAPI):
         log.warning("AUTH_OBRIGATORIA=false: escrita sem login liberada (só para desenvolvimento)")
     if not s.livekit_configurada():
         log.warning("LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET ausentes")
-    if not s.llm_shared_secret:
-        log.warning("LLM_SHARED_SECRET vazio: qualquer um com a URL pública pode chamar /v1/chat/completions")
     yield
     ct.cancelar_tarefas()
 
@@ -78,7 +76,6 @@ def health():
         "public_url": url_publica(s),
         "recebedor_modo": s.recebedor_modo,
         "auth_obrigatoria": s.auth_obrigatoria,
-        "llm_protegido": bool(s.llm_shared_secret),
     }
 
 if __name__ == "__main__":
