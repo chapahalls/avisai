@@ -10,13 +10,24 @@ from collections import defaultdict
 from sqlalchemy import func, text
 from sqlmodel import select
 
+from .conectores.edi import nfe
 from .infra import container as ct
 from .infra.db import engine, sessao
-from .infra.models import Empresa, Motorista, RegraEscalonamento, Rota, Usuario
+from .infra.models import Empresa, Motorista, ParceiroEdi, RegraEscalonamento, Rota, Usuario
 from .servicos.usuarios import garantir_cco, garantir_motorista, normalizar_email
 
 ORIGEM = ("CD Jundiaí", -23.1857, -46.8978)
 DESTINO = ("Mercadão Campinas, CD Norte", -22.9056, -47.0608)
+# CNPJs e chave de NF-e fictícios, só para a demo do conector OCOREN (docs/edi/ocoren-integracao.md).
+TRANSPORTADORA_CNPJ = "12345678000195"
+EMBARCADOR = ("Distribuidora ABC Ltda", "11222333000181")  # emite a NF; não é a transportadora nem o recebedor
+
+
+def _chave_nfe_demo(nota_fiscal: str) -> str:
+    """Chave de NF-e fictícia (DV módulo 11 válido), a partir dos dígitos da NF da demo."""
+    numero = "".join(d for d in nota_fiscal if d.isdigit()) or "1"
+    return nfe.gerar_chave(cuf="35", aamm="2611", cnpj=EMBARCADOR[1], serie="1", numero=numero,
+                           codigo_numerico="00000001")
 PERFIS_CCO = (
     ("cco@avisai.test", "Ana (CCO)"),
     ("cco.turno2@avisai.test", "Bruno (CCO)"),
@@ -65,9 +76,13 @@ def seed(reset: bool = False) -> int:
         existing_route = s.exec(select(Rota).order_by(Rota.id)).first()
         emp = s.exec(select(Empresa).where(Empresa.nome == "Transportadora Rota Sul").order_by(Empresa.id)).first()
         if emp is None:
-            emp = Empresa(nome="Transportadora Rota Sul")
+            emp = Empresa(nome="Transportadora Rota Sul", cnpj=TRANSPORTADORA_CNPJ,
+                          razao_social="Transportadora Rota Sul Ltda")
             s.add(emp)
             s.flush()
+        elif not emp.cnpj:
+            emp.cnpj, emp.razao_social = TRANSPORTADORA_CNPJ, "Transportadora Rota Sul Ltda"
+            s.add(emp)
         if s.exec(select(RegraEscalonamento).where(RegraEscalonamento.empresa_id == emp.id)).first() is None:
             s.add(RegraEscalonamento(empresa_id=emp.id, max_tentativas=3, intervalo_s=cfg.cco_intervalo_s,
                                      niveis=["push", "painel", "ligacao"], acao_final="ligar_recebedor"))
@@ -128,9 +143,16 @@ def seed(reset: bool = False) -> int:
                 janela_descarga="hoje, 14h às 16h", recebedor_empresa="Mercadão Campinas",
                 recebedor_nome="Marcos, do recebimento", recebedor_telefone_e164=cfg.recebedor_telefone_e164,
                 aproximacao_min=15, raio_chegada_m=300, publicada_em=None,
+                nfe_chave=_chave_nfe_demo("000.482.913"), embarcador_nome=EMBARCADOR[0],
+                embarcador_cnpj=EMBARCADOR[1], romaneio="ROM-DEMO-001",
             )
             s.add(existing_route)
             s.flush()
+        elif existing_route is not None and not existing_route.nfe_chave:
+            existing_route.nfe_chave = _chave_nfe_demo(existing_route.nota_fiscal or "1")
+            existing_route.embarcador_nome, existing_route.embarcador_cnpj = EMBARCADOR
+            existing_route.romaneio = existing_route.romaneio or "ROM-DEMO-001"
+            s.add(existing_route)
 
         for item in ROTAS_DEMO:
             if s.exec(select(Rota).where(Rota.nota_fiscal == item["nota_fiscal"])).first() is not None:
@@ -152,7 +174,13 @@ def seed(reset: bool = False) -> int:
                 janela_descarga="Demonstração · horário a combinar", recebedor_empresa=name,
                 recebedor_nome="Contato fictício DEMO", recebedor_telefone_e164="",
                 publicada_em=container.relogio.agora(), atribuida_em=container.relogio.agora(),
+                nfe_chave=_chave_nfe_demo(item["nota_fiscal"]), embarcador_nome=EMBARCADOR[0],
+                embarcador_cnpj=EMBARCADOR[1], romaneio=f"ROM-{item['nota_fiscal']}",
             ))
+
+        if s.exec(select(ParceiroEdi).where(ParceiroEdi.empresa_id == emp.id)).first() is None:
+            s.add(ParceiroEdi(empresa_id=emp.id, nome="Intelipost (OCOREN 5.0 · padrão)", layout="ocoren-5.0"))
+            s.add(ParceiroEdi(empresa_id=emp.id, nome="PROCEDA (OCOREN 3.1 · variante)", layout="ocoren-3.1"))
         s.commit()
         if existing_route is None:
             existing_route = s.exec(select(Rota).order_by(Rota.id)).first()
