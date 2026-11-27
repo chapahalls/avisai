@@ -9,7 +9,7 @@ from ..dominio import escalonamento
 from ..dominio.enums import StatusRota, StatusTask, TipoEvento, TipoGeo
 from ..infra.db import sessao
 from ..infra.models import Estadia, EventoGeo, Ocorrencia, RegraEscalonamento, Rota, TaskCCO
-from . import chamados, consultas, ligacoes
+from . import chamados, chamadas_agente, consultas, ligacoes
 from .sessoes import VozLiveKit
 
 log = logging.getLogger("avisai.tasks")
@@ -153,6 +153,14 @@ async def loop_escalonamento(c, task_id: int) -> None:
             rota_id, task_id=task_id, tentativa=n, canal=canal, prioridade=prioridade, estadia=x,
         )
         _publicar_task(c, t)
+        if canal == "ligacao":
+            # canal mais forte: liga de verdade para a central (nunca WhatsApp nem supervisor)
+            motivo = (f"Task de chegada sem confirmação (tentativa {n}/{max_t}): caminhão parado há "
+                      f"{x.get('tempo_parado', '-')}, estadia {x.get('valor_fmt', '-')}.")
+            try:
+                await chamadas_agente.ligar(c, rota_id, "operador", motivo)
+            except Exception as erro:  # noqa: BLE001  (já registrado como chamada_twilio_falhou/escalada_supervisor)
+                log.error("ligação ao operador (escalonamento) falhou: %s", erro)
         await asyncio.sleep(intervalo)
     with sessao() as s:
         t = s.get(TaskCCO, task_id)

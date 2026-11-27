@@ -3,7 +3,7 @@ from sqlmodel import select
 
 from app.infra.db import sessao
 from app.infra.models import LigacaoRecebedor, RegraEscalonamento, TaskCCO
-from app.servicos import sessoes, tasks
+from app.servicos import chamadas_agente, sessoes, tasks
 from tests.helpers import esperar, eventos, obter
 
 
@@ -23,6 +23,21 @@ async def test_sem_resposta_do_cco_tres_tentativas_e_liga_para_recebedor(contain
     assert any("ligando pro recebimento" in f for f in fake_livekit.falas())
     await esperar(lambda: len(_ligacoes()) == 1)
     assert _ligacoes()[0].task_id == t.id
+
+
+async def test_terceira_tentativa_liga_de_verdade_para_a_central(container, rota_id, fake_livekit):
+    """O canal 'ligacao' (3/3) não é só um rótulo: dispara chamadas_agente.ligar(operador)."""
+    await sessoes.iniciar_motorista(container, rota_id)
+    t = await tasks.on_chegada(container, rota_id, origem="gps")
+    await esperar(lambda: obter(TaskCCO, t.id).status == "escalada_recebedor")
+    chamadas = chamadas_agente.listar(rota_id)
+    assert len(chamadas) == 1
+    chamada = chamadas[0]
+    assert chamada.destino == "operador"
+    assert "tentativa 3/3" in chamada.motivo
+    # Twilio não está configurado no teste: cai no fallback LiveKit RTC (não falha o escalonamento).
+    assert chamada.status == "livekit_tocando"
+    assert any(n.tipo == "chamada_livekit_iniciada" for n in eventos())
 
 
 async def test_cco_confirma_e_loop_para_sem_ligacao(container, rota_id, fake_livekit):
