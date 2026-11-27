@@ -15,8 +15,36 @@ conta.
 - `envs/dev/` — a infra de verdade: VPC (reaproveitada via data source, nunca
   criada aqui), ECS Fargate (cluster dedicado `rumolog-cluster-dev`, sem
   compartilhar com o `sginfra-cluster-dev`), Cloud Map (`rumolog.internal`,
-  sem ALB — tudo interno), RDS Postgres (`rumolog-dev-db`), ECR, Secrets
-  Manager.
+  usado pelo voice-agent pra falar com a api), ALB público
+  (`rumolog-dev-alb`, só HTTP/80 por enquanto — ver caveat de HTTPS abaixo)
+  expondo a api pra fora da VPC, RDS Postgres (`rumolog-dev-db`), ECR,
+  Secrets Manager.
+
+## Deploy em produção: URL pública e migração
+
+A api está no ar em `http://rumolog-dev-alb-<id>.us-east-1.elb.amazonaws.com`
+(ver output `api_public_url`). `alembic upgrade head` e `python -m app.seed`
+rodam automaticamente no `CMD` do container (`backend/Dockerfile`) antes do
+`uvicorn` subir — já confirmado rodando contra o `rumolog-dev-db` novo.
+
+**Caveat HTTPS**: `rodar-web`/`rodar-mobile` são servidos via GitHub Pages
+(HTTPS). Chamar um endpoint HTTP puro de uma página HTTPS é bloqueado pelo
+navegador (mixed content). Enquanto o ALB não tiver TLS, isso só funciona
+abrindo a URL do ALB direto (sem ser via fetch de uma página HTTPS). Opções
+pra resolver: CloudFront na frente do ALB (TLS grátis em `*.cloudfront.net`,
+sem precisar de domínio próprio) ou ACM + domínio custom no ALB.
+
+**Pegadinha de rede já resolvida**: as tasks ECS ficam nas subnets privadas,
+e o tráfego pra `logs`/`ssmmessages`/`secretsmanager`(parcial)/`efs` passa
+por um VPC Interface Endpoint compartilhado cujo security group
+(`sg-002f850c754ce7e91`, na prática o SG de tasks do `sginfra-cluster-dev`)
+só libera 443 pra uma allow-list explícita de SGs de outras apps. Sem uma
+regra lá, o ECS mata a task com `ResourceInitializationError: ... cannot
+find the Amazon CloudWatch log group ... connection issue` mesmo com
+NAT/rotas/NACLs todas certas. A regra pro nosso SG já foi adicionada em
+`security_groups.tf` (`aws_security_group_rule.shared_logs_endpoint_ingress_ecs_tasks`),
+mas o SG de destino em si não é gerenciado por este state (é infra
+compartilhada da VPC).
 
 ## O que existia antes e foi decomissionado
 
@@ -38,9 +66,12 @@ manual do snapshot pra uma instância separada.
 
 ## Pendências pós-apply (não dá pra automatizar sem valores reais)
 
-- **Secrets com placeholder** (`rumolog/dev/livekit`, `rumolog/dev/llm`,
-  `rumolog/dev/auth`, `rumolog/dev/twilio`): preencha os valores de verdade
-  com `aws secretsmanager put-secret-value --secret-id <nome> --secret-string
+- **Secrets com placeholder**: `rumolog/dev/livekit`, `rumolog/dev/llm` e
+  `rumolog/dev/auth` já foram preenchidos com os valores reais (vieram do
+  `.env` local). `rumolog/dev/twilio` continua `CHANGE_ME` — não tem
+  credencial Twilio disponível ainda; sem isso o app só loga
+  `twilio_configurado: false` (não derruba a api). Pra preencher depois:
+  `aws secretsmanager put-secret-value --secret-id <nome> --secret-string
   '<json>' --profile cdk-manager-dev`. O OpenTofu tem `ignore_changes` no
   conteúdo desses secrets, então não vai reverter o que você colocar lá.
 - **Integração de leitura do sginfra-adm-operacoes**: o banco antigo liberava
@@ -51,11 +82,12 @@ manual do snapshot pra uma instância separada.
   (`aws_security_group_rule.db_ingress_sginfra_app`), mas o usuário read-only
   em si **não existe no banco novo** — precisa recriar na mão (`CREATE USER
   ... GRANT ...`) e atualizar a connection string que o app do sginfra usa.
-- **Imagens placeholder**: `api_image`/`voice_agent_image` apontam pra uma
-  imagem pública qualquer até o CI publicar a imagem real no ECR
-  (`rumolog-backend`). Depois que o pipeline publicar, atualize
-  `terraform.tfvars` com a tag real e reaplique (ou troque via `aws ecs
-  update-service --force-new-deployment` depois de dar push com a mesma tag).
+- **Imagens**: já builda e publicada no ECR (`rumolog-backend`), tags `latest`
+  e a SHA curta do commit. `terraform.tfvars` (local, gitignored) aponta
+  `api_image`/`voice_agent_image` pra essa tag real e `desired_count = 1`
+  nos dois serviços. Depois de um push novo da imagem com a mesma tag, só
+  `aws ecs update-service --force-new-deployment` já pega a versão nova
+  (sem precisar reaplicar o Tofu).
 
 ## Como aplicar
 
