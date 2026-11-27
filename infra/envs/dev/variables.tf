@@ -141,3 +141,11 @@ variable "log_retention_days" {
   type    = number
   default = 14
 }
+
+variable "cors_origins" {
+  description = "Origens liberadas no CORS da api (rodar-web e rodar-mobile publicados no GitHub Pages)."
+  type        = list(string)
+  default = [
+    "https://rodarglobal.github.io",
+  ]
+}

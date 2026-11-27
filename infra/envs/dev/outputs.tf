@@ -22,6 +22,10 @@ output "api_internal_url" {
   value = "http://api.${var.service_discovery_namespace}:8000"
 }
 
+output "api_public_url" {
+  value = "http://${aws_lb.rumolog.dns_name}"
+}
+
 output "app_secret_arns" {
   value = { for k, s in aws_secretsmanager_secret.app : k => s.arn }
 }

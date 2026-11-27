@@ -28,6 +28,23 @@ resource "aws_security_group_rule" "ecs_tasks_self_ingress" {
   description              = "api e voice-agent conversando entre si via Cloud Map"
 }
 
+# VPC Interface Endpoint compartilhado de "logs" (com.amazonaws.us-east-1.logs),
+# usado também por ssmmessages/secretsmanager(secundario)/elasticfilesystem,
+# so libera 443 para uma allow-list explicita de security groups de outras
+# apps (Mayan, Keycloak...). Sem essa regra as tasks do rodar-backend nao
+# conseguem mandar log para o CloudWatch (ResourceInitializationError no
+# ECS: "cannot find the Amazon CloudWatch log group... connection issue").
+# Esse SG nao e gerenciado por este state (e infra compartilhada do VPC).
+resource "aws_security_group_rule" "shared_logs_endpoint_ingress_ecs_tasks" {
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  security_group_id        = "sg-002f850c754ce7e91"
+  source_security_group_id = aws_security_group.ecs_tasks.id
+  description              = "rodar-backend ECS tasks to AWS interface endpoints"
+}
+
 resource "aws_security_group" "db" {
   name        = "rumolog-dev-db-sg"
   description = "Instancia RDS rumolog-dev-db. So aceita 5432 das tasks ECS do rodar-backend."

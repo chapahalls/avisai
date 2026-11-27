@@ -13,7 +13,8 @@ locals {
   common_environment = {
     AUTH_OBRIGATORIA               = "true"
     AUTH_TOKEN_VALIDADE_H          = "12"
-    CORS_ORIGENS                   = "[]"
+    CORS_ORIGENS                   = jsonencode(var.cors_origins)
+    PUBLIC_URL                     = "http://${aws_lb.rumolog.dns_name}"
     LIGACOES_MANUAIS_MAX           = "5"
     LIGACOES_MANUAIS_JANELA_S      = "600"
     RECEBEDOR_MODO                 = "rtc"
@@ -136,6 +137,14 @@ resource "aws_ecs_service" "api" {
   service_registries {
     registry_arn = aws_service_discovery_service.api.arn
   }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.api.arn
+    container_name   = "api"
+    container_port   = 8000
+  }
+
+  depends_on = [aws_lb_listener.http]
 }
 
 resource "aws_ecs_service" "voice_agent" {
