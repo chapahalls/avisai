@@ -3,7 +3,7 @@
 [![CI](https://github.com/rodarglobal/rodar-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/rodarglobal/rodar-backend/actions/workflows/ci.yml)
 [![Deploy](https://img.shields.io/badge/deploy-vercel-black?logo=vercel)](https://rodar-backend-five.vercel.app/docs)
 
-CI no GitHub Actions (lint com ruff e testes com pytest) a cada push e pull request em `main`; passando, o deploy é automático na **Vercel**. A API em produção está em [rodar-backend-five.vercel.app](https://rodar-backend-five.vercel.app), com a documentação interativa (Swagger) em **[/docs](https://rodar-backend-five.vercel.app/docs)**.
+CI no GitHub Actions (lint com ruff e testes com pytest) a cada push e pull request em `main`; passando, o deploy é automático na **Vercel**: [rodar-backend-five.vercel.app](https://rodar-backend-five.vercel.app), com a documentação interativa (Swagger) em **[/docs](https://rodar-backend-five.vercel.app/docs)**. **Esse deploy é temporário e só para a submissão do Hack Brasil** — leia [a ressalva abaixo](#já-em-produção-temporário-para-o-hack-brasil) antes de testar uma rota que toque o banco.
 
 Copiloto de voz do RODAR para transportadoras, focado no **caminhão parado**:
 1. Na aproximação, o agente avisa o motorista e o CCO.
@@ -13,7 +13,7 @@ Copiloto de voz do RODAR para transportadoras, focado no **caminhão parado**:
 
 Time RODAR (4 pessoas: Jeferson, Henry, Lucas e Eduardo) · backend e infra: Lucas.
 
-> **Histórico:** o projeto começou como *AvisAI* no hackathon UNMUTE by Agora (21–22/11/2026) e continua como **RODAR** no Hack Brasil 2026, na trilha Logística & automação. Os repositórios foram criados em 22/11/2026 e todo o histórico de commits está neles; o AvisAI virou o nome do agente de voz do RODAR.
+> **Histórico:** o projeto começou como *AvisAI* no hackathon UNMUTE by Agora (21–22/11/2026) e continua como **RODAR** no Hack Brasil 2026, na trilha Logística & automação. Os repositórios foram criados em 22/11/2026 e todo o histórico de commits está neles; o AvisAI virou o nome do agente de voz do RODAR. **Nenhum código anterior a 04/11/2026 21h (abertura oficial do Hack Brasil) entrou neste repositório:** o primeiro commit é de 22/11/2026, depois da abertura. Os três primeiros commits têm o mesmo segundo (`02:42:12 -03:00`) porque o trabalho feito em 21–22/11 no UNMUTE by Agora foi organizado em commits e enviado de uma vez na criação deste repositório — não é histórico de um projeto anterior à regra.
 
 Licença: [MIT](LICENSE). As tags `v1.0-entrega` a `v1.3-entrega` marcam as versões entregues no UNMUTE by Agora; a versão avaliada no Hack Brasil é o último commit de `main`.
 
@@ -34,10 +34,10 @@ O áudio WebRTC e o worker de voz rodam no **LiveKit**. Os clientes publicam áu
 | **Trilha** | Logística & automação |
 | **Em uma frase** | Um agente de voz que avisa o recebedor antes da chegada, conta a estadia do caminhão parado (Lei 11.442) e só chama a central quando alguém precisa decidir. |
 | **Demo no ar** | [painel do CCO e site no modo Demo](https://rodarglobal.github.io/rodar-web/) (clique em **Entrar com SSO**) · [app do motorista no navegador](https://rodarglobal.github.io/rodar-mobile/) |
-| **API em produção** | backend com deploy contínuo na **Vercel**: [rodar-backend-five.vercel.app/docs](https://rodar-backend-five.vercel.app/docs) |
-| **Ver sem instalar nada** | [tour em vídeo de 1 min](https://github.com/rodarglobal/rodar-web/blob/main/docs/assets/readme/tour.mp4) do site e do painel · [tour do app do motorista (1 min)](https://github.com/rodarglobal/rodar-mobile/blob/main/docs/assets/readme/tour.mp4) · [validação ponta a ponta histórica, anterior à troca do provedor de voz](https://github.com/rodarglobal/rodar-backend/blob/main/evidence/validacao.md) · [telas do app](https://github.com/rodarglobal/rodar-mobile#telas-do-aplicativo) |
+| **API em produção** | backend com deploy contínuo na **Vercel**: [rodar-backend-five.vercel.app/docs](https://rodar-backend-five.vercel.app/docs) — **temporário, só para o Hack Brasil**, com ressalvas; leia [abaixo](#já-em-produção-temporário-para-o-hack-brasil) antes de usar |
+| **Ver sem instalar nada** | [tour em vídeo de 1 min](https://github.com/rodarglobal/rodar-web/blob/main/docs/assets/readme/tour.mp4) do site e do painel · [tour do app do motorista (1 min)](https://github.com/rodarglobal/rodar-mobile/blob/main/docs/assets/readme/tour.mp4) · [validação ponta a ponta histórica, anterior à troca do provedor de voz](https://github.com/rodarglobal/rodar-backend/blob/main/evidence/validacao.md) (33/33, era Agora, LLM em contingência; **o caminho de voz atual, no LiveKit, ainda não tem uma validação ponta a ponta publicada**) · [telas do app](https://github.com/rodarglobal/rodar-mobile#telas-do-aplicativo) |
 | **Repositórios** | [rodar-backend](https://github.com/rodarglobal/rodar-backend) (este) · [rodar-web](https://github.com/rodarglobal/rodar-web) · [rodar-mobile](https://github.com/rodarglobal/rodar-mobile) |
-| **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 568 testes automatizados: 332 no backend, 127 no web, 109 no mobile · neste repo, CI no GitHub Actions seguido de deploy automático na Vercel |
+| **Qualidade** | CI em cada repositório com lint e testes (e typecheck nos fronts) · 615 testes automatizados: 379 no backend, 127 no web, 109 no mobile · neste repo, CI no GitHub Actions seguido de deploy automático na Vercel |
 | **Segurança** | JWT assinado no login e exigido em toda escrita (padrão), papel `cco` nas ações da central, motorista só na própria rota, CORS restrito e limite de ligações. O que falta para produção está [escrito aqui](#o-que-falta-para-produção) |
 | **O que é simulado** | login sem senha, GPS da rota, documentos fiscais e o modo Demo do painel: [lista completa](#simulado--pré-existente-e5e8) |
 | **Glossário** | **CCO**: a central de operações da transportadora · **recebedor**: quem descarrega (CD, atacado, loja) · **doca**: o portão de descarga · **estadia**: o valor que a lei manda pagar pelo caminhão parado além de 5 h (a **franquia**; Lei 11.442) · **geocerca**: o raio em volta do destino que marca a chegada · **Task**: o pedido que o CCO precisa responder |
@@ -82,7 +82,16 @@ Os frontends devem conservar essa distinção. Não use um campo ausente da API 
 
 ## Como rodar
 
-**Já em produção:** a API tem deploy contínuo na Vercel em [rodar-backend-five.vercel.app](https://rodar-backend-five.vercel.app), com a doc interativa em [/docs](https://rodar-backend-five.vercel.app/docs) — a cada push em `main`, o CI do GitHub Actions (lint + testes) roda primeiro, e passando, a Vercel publica a nova versão.
+### Já em produção (temporário, para o Hack Brasil)
+
+A cada push em `main`, o CI do GitHub Actions (lint + testes) roda primeiro e, passando, a **Vercel** publica a API em [rodar-backend-five.vercel.app](https://rodar-backend-five.vercel.app) (doc interativa em [/docs](https://rodar-backend-five.vercel.app/docs)). Esse deploy existe **só para a submissão do Hack Brasil** e é **temporário por desenho**, não um ambiente de produção:
+
+- **Falta o banco gerenciado.** O painel da Vercel não tem `DATABASE_URL` configurada, então a API cai no padrão do Docker Compose (`db:5432`, que não existe na Vercel). `/docs`, `/health` e `/livekit/config` respondem; qualquer rota que toque o banco — incluindo `/auth/sso`, ou seja, nenhum login funciona — responde 500. `GET /health` mostra `banco_ok` para isso ficar visível em vez de escondido.
+- **Isso é intencional pelo custo, não só um esquecimento.** Hoje só a API HTTP está instanciada na Vercel (plano gratuito). Colocar todas as peças no ar ao mesmo tempo — um Postgres gerenciado, o worker de voz (`voice-agent`, processo à parte, sempre ligado) e um WebSocket/SSE persistente — exigiria outro(s) serviço(s) pagos ou com limites de uso só para a demo rodar fora do horário da avaliação; o time preferiu manter isso no Docker Compose local/túnel até decidir hospedar aquilo que não seja a demo em si.
+- **Mesmo com o banco ligado, a Vercel é o host errado para este backend.** É serverless: as tarefas de fundo que o fluxo "só chama a central quando precisa" usa (`infra/container.py:37`, `Container.em_segundo_plano` → `asyncio.create_task`, usadas por escalonamento, estadia e ligações) morrem quando a resposta HTTP termina. O WebSocket não roda lá, e o SSE (`/cco/stream`) tem limite de duração da função. Não existe `vercel.json` no repositório — a configuração do projeto vive só no painel da Vercel, sem rastro no código versionado.
+- **Caminho mais seguro para uma demo que depende desses fluxos:** uma VM ou um container de longa duração (Fly.io, Render ou Railway) com Postgres gerenciado, mantendo `voice-agent` como processo separado — o mesmo desenho do `docker-compose.yml`, só que hospedado.
+
+Até isso mudar, rode localmente para ver o fluxo completo (inclusive voz e estadia) funcionando de ponta a ponta.
 
 Para rodar localmente (clone limpo, só Docker):
 
@@ -149,11 +158,12 @@ O que está acima basta para a demo, não para operar com dados reais. Falta, em
 
 | O quê | Onde | Como | Por quê |
 |---|---|---|---|
+| Deploy persistente com banco gerenciado | Vercel (serverless, sem `DATABASE_URL`) | VM ou container de longa duração (Fly, Render, Railway) com Postgres gerenciado e `voice-agent` como processo separado — [detalhe acima](#já-em-produção-temporário-para-o-hack-brasil) | serverless não sustenta as tarefas de fundo, o WebSocket nem o SSE que o fluxo da central depende |
 | Login de verdade | `api/compat.py` (`/auth/sso`) e telas de login do app e do painel | central com o SSO da empresa (OIDC) ou senha com hash Argon2; motorista com código por SMS | hoje não há senha: quem conhece um e-mail do seed entra com aquele papel |
 | 2FA para a central | `infra/auth.py` e uma tabela de fatores; tela de código no painel | TOTP com app autenticador, obrigatório para o papel `cco`, com códigos de recuperação | a central publica rotas, dispara ligações pagas e vê dados de motoristas |
 | Leituras protegidas | `GET /rotas`, `/cco/*`, `/eventos`, `/api/*`, SSE e WebSocket | mesmo token das escritas; o motorista vê só a própria rota | transcrições, GPS e telefones ainda podem ser lidos sem login |
 | Sessão segura | `api/deps.py` (`?token=` no SSE e WebSocket) | token de 15 min com refresh rotativo e revogação; ticket de uso único no WebSocket; `expo-secure-store` no app e cookie HttpOnly no painel | token na URL vaza em logs; hoje ele vale 12 h e não dá para revogar |
-| Segredos e HTTPS | `.env`, deploy por túnel temporário | domínio próprio com HTTPS, segredos num cofre, CORS só para o domínio de produção | túnel temporário não é produção |
+| Segredos e HTTPS | `.env`, deploy por túnel temporário ou Vercel sem banco | domínio próprio com HTTPS, segredos num cofre, CORS só para o domínio de produção | nem túnel temporário nem a Vercel de hoje são produção |
 | Dados pessoais (LGPD) | transcrições, GPS e telefones no banco e em `ARQUIVOS_DIR` | aviso ao motorista, prazo de retenção, registro de quem acessou, backup cifrado | voz e localização de trabalhador são dados pessoais |
 | Limites com várias instâncias | `infra/auth.py` (`LimiteChamadas`, em memória) | mover o limite de ligações para Redis | em memória, cada instância conta sozinha |
 | Rotas de demonstração | `POST /rotas/{id}/reset` | remover em produção | apaga o histórico da viagem |
@@ -303,7 +313,7 @@ Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi
 
 | Método | Caminho | Corpo | O que faz |
 |---|---|---|---|
-| GET | `/health` | — | estado da configuração LiveKit, túnel, Twilio e LLM |
+| GET | `/health` | — | `banco_ok` (conexão real com o Postgres) e o estado da configuração LiveKit, túnel, Twilio e LLM |
 | GET | `/usuarios?role=driver\|cco`<br>`/api/users` | — | perfis persistidos de demonstração |
 | POST | `/usuarios` | `{nome, email}` | cadastra um operador da central (perfil `cco`); 409 se o e-mail já existir |
 | GET | `/livekit/config` | — | diz se o LiveKit está configurado e a `LIVEKIT_URL`; nunca expõe chave ou segredo |
