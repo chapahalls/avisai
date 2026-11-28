@@ -23,8 +23,11 @@ def rota_publica(r: Rota, com_trajeto: bool = False) -> dict:
 
 @router.get("/rotas")
 def listar():
+    # order_by: sem isso a ordem do Postgres não é garantida e muda depois de um UPDATE (toda troca de
+    # status de rota) — o smoke do deploy (ci.yml) e scripts/validar_fluxos.py dependem de `[0]` ser
+    # sempre a mesma rota (a do seed, com nfe_chave; alerta do júri, score.md 2026-11-27).
     with sessao() as s:
-        return [rota_publica(r) for r in s.exec(select(Rota)).all()]
+        return [rota_publica(r) for r in s.exec(select(Rota).order_by(Rota.id)).all()]
 
 
 @router.get("/rotas/{rota_id}")

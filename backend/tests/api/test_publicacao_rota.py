@@ -30,6 +30,16 @@ async def test_cco_publica_rota_sem_motorista(client):
     assert rota["id"] in [x["id"] for x in (await client.get("/rotas")).json()]
 
 
+async def test_listagem_de_rotas_e_sempre_ordenada_por_id(client):
+    """Sem order_by, a ordem do Postgres não é garantida (alerta do júri, score.md): o smoke do
+    deploy (ci.yml) e scripts/validar_fluxos.py dependem de `GET /rotas`[0] ser sempre a mesma rota."""
+    a = (await client.post("/rotas", json=NOVA)).json()
+    b = (await client.post("/rotas", json={**NOVA, "nota_fiscal": "000.519.005"})).json()
+    ids = [x["id"] for x in (await client.get("/rotas")).json()]
+    assert ids == sorted(ids)
+    assert ids.index(a["id"]) < ids.index(b["id"])
+
+
 async def test_telefone_do_recebedor_precisa_ser_e164(client):
     ruim = {**NOVA, "recebedor": {**NOVA["recebedor"], "telefone_e164": "15 90000-0003"}}
     assert (await client.post("/rotas", json=ruim)).status_code == 422
