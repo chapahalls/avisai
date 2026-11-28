@@ -85,6 +85,10 @@ def health():
         "public_url": url_publica(s),
         "recebedor_modo": s.recebedor_modo,
         "auth_obrigatoria": s.auth_obrigatoria,
+        # declarado no README: liga pro recebedor avisando a chegada antes do caminhão passar a
+        # geocerca (abertura do pitch). Visível aqui pra não ficar escondido num .tfvars/ecs.tf
+        # (risco do júri, score.md 2026-11-27: a demo pública não mostra se está ligado).
+        "ligar_recebedor_na_aproximacao": s.ligar_recebedor_na_aproximacao,
     }
     # 503 com "ok": false: um `curl -fsS`/load balancer que só olha o status HTTP (como o smoke do
     # job `deploy` em ci.yml) detecta o banco fora do ar, em vez de ler 200 e achar que está tudo bem

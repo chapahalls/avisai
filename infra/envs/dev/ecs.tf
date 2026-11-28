@@ -25,7 +25,7 @@ locals {
     CCO_INTERVALO_S                = "20"
     CCO_MAX_TENTATIVAS             = "3"
     ESTADIA_ACELERACAO             = "1"
-    LIGAR_RECEBEDOR_NA_APROXIMACAO = "false"
+    LIGAR_RECEBEDOR_NA_APROXIMACAO = "true"
     LIGACAO_TIMEOUT_S              = "180"
     GEOCODIFICACAO_PROVEDOR        = "nominatim"
     GEOCODIFICACAO_URL             = "https://nominatim.openstreetmap.org"

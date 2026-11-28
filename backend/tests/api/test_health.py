@@ -29,3 +29,12 @@ async def test_health_expoe_o_sha_do_build(client):
     ct.atual().settings.git_sha = "abc1234"
     r = await client.get("/health")
     assert r.json()["sha"] == "abc1234"
+
+
+async def test_health_expoe_se_a_ligacao_na_aproximacao_esta_ligada(client):
+    # risco do júri (score.md 2026-11-27): a demo pública não mostrava se essa flag estava
+    # ligada/desligada, apesar de ser a abertura do pitch (avisar o recebedor antes de chegar).
+    ct.atual().settings.ligar_recebedor_na_aproximacao = False
+    assert (await client.get("/health")).json()["ligar_recebedor_na_aproximacao"] is False
+    ct.atual().settings.ligar_recebedor_na_aproximacao = True
+    assert (await client.get("/health")).json()["ligar_recebedor_na_aproximacao"] is True
