@@ -5,6 +5,8 @@ Cenário da demo: rota com 11h40 de espera no destino -> 542/342 código "descar
 """
 from app.conectores.edi.layouts import ocoren_31, ocoren_50
 from app.conectores.edi.motor import ler
+from app.infra.db import sessao
+from app.infra.models import Empresa
 from tests.api.test_publicacao_rota import NOVA
 
 
@@ -60,6 +62,33 @@ async def test_troca_de_parceiro_gera_ocoren_3_1_com_texto_livre(client, relogio
     valores = ler(linhas[3], ocoren_31.REGISTRO_342)
     assert valores["codigo_ocorrencia"] == 1  # De-Para da 3.1: "descarga" -> 01
     assert valores["texto_livre"] and "ESPERA" in valores["texto_livre"]
+
+
+async def test_duas_geracoes_seguidas_avancam_e_persistem_a_sequencia_1_e_2(client, relogio):
+    """Regressão (alerta do júri): a sequência do OCOREN (nome do intercâmbio no 000, `seq` de
+    `servicos/edi._proxima_sequencia`) precisa ficar persistida em `Empresa.ultima_sequencia_ocoren`,
+    avançando a cada arquivo gerado — não resetar nem repetir entre chamadas."""
+    p50 = await _parceiro_id(client, "ocoren-5.0")
+    await _descarregar_com_espera(client, relogio)
+
+    with sessao() as s:
+        assert s.get(Empresa, 1).ultima_sequencia_ocoren == 0
+
+    r1 = await client.get("/rotas/1/ocoren", params={"parceiro": p50})
+    assert r1.status_code == 200, r1.text
+    with sessao() as s:
+        assert s.get(Empresa, 1).ultima_sequencia_ocoren == 1
+
+    r2 = await client.get("/rotas/1/ocoren", params={"parceiro": p50})
+    assert r2.status_code == 200, r2.text
+    with sessao() as s:
+        assert s.get(Empresa, 1).ultima_sequencia_ocoren == 2
+
+    # a sequência também aparece no intercâmbio do registro 000, refletindo o que foi persistido
+    intercambio_1 = ler(_linhas(r1)[0], ocoren_50.REGISTRO_000)["intercambio"].strip()
+    intercambio_2 = ler(_linhas(r2)[0], ocoren_50.REGISTRO_000)["intercambio"].strip()
+    assert intercambio_1[-3:] == "001"
+    assert intercambio_2[-3:] == "002"
 
 
 async def test_sem_chave_de_nfe_e_409(client):
