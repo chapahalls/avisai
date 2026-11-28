@@ -4,7 +4,8 @@
 Percorre uma viagem inteira numa rota nova: publicação/atribuição, retirada, relatório inicial,
 aproximação + ligação ao recebedor (doca e "não recebe hoje"), chegada com dupla prova de GPS,
 check-in com campo faltante, ocorrência, pergunta sobre a NF, pedido da central, escalonamento do CCO
-+ ligação, CCO assume, descarga, eventos do contrato (DomainEvent), métricas e divergência de GPS.
++ ligação, CCO assume, descarga, eventos do contrato (DomainEvent), métricas, divergência de GPS e,
+numa rota do seed (com NF-e), a geração do arquivo OCOREN (EDI).
 
 As falas do motorista e do recebedor são simuladas pelo gateway do LLM (/v1/chat/completions).
 A sala RTC e o agente de voz são executados pelo LiveKit.
@@ -100,6 +101,17 @@ def posicao(rota_id: int, lat: float, lng: float, rastreador: tuple | None = Non
 def ligacao(rota_id: int, motivo: str, desde: int = 0):
     ligs = [l for l in req("GET", "/ligacoes")[1] if l["rota_id"] == rota_id and l["motivo"] == motivo and l["id"] > desde]
     return ligs[0] if ligs else None
+
+
+def ocoren(rota_id: int, parceiro_id: int) -> tuple[int, str]:
+    """GET /rotas/{id}/ocoren devolve texto de largura fixa (não JSON), por isso não passa por req()."""
+    h = {"Authorization": f"Bearer {_token_cco()}"} if _token_cco() else {}
+    r = urllib.request.Request(f"{API}/rotas/{rota_id}/ocoren?parceiro={parceiro_id}", headers=h)
+    try:
+        with urllib.request.urlopen(r, timeout=60) as resp:
+            return resp.status, resp.read().decode("cp1252", errors="replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode(errors="replace")[:300]
 
 
 NOVA_ROTA = {
@@ -265,6 +277,19 @@ def main() -> int:
     if t_div:  # encerra para não escalar
         req("POST", f"/tasks/{t_div['id']}/confirmar", {"confirmado_por": "Validador"})
         req("POST", f"/rotas/{R3}/descarga", {"por": "Validador"})
+
+    # 11. OCOREN (EDI): a rota desta validação não tem NF-e (POST /rotas não aceita nfe_chave), então usa
+    # a rota do seed (a de menor id sempre tem, ver app/seed.py) — o mesmo caminho do smoke do deploy.
+    rota_edi = next((r for r in req("GET", "/rotas")[1] if r.get("nfe_chave")), None)
+    parceiros = req("GET", f"/edi/parceiros?empresa_id={rota_edi['empresa_id']}")[1] if rota_edi else []
+    if rota_edi and parceiros:
+        st_edi, corpo_edi = ocoren(rota_edi["id"], parceiros[0]["id"])
+        etapa("11. OCOREN: GET /rotas/{id}/ocoren devolve o arquivo (registro 000 com CNPJ e sequência)",
+              st_edi == 200 and corpo_edi[:3] == "000" and len(corpo_edi) > 50,
+              f"rota {rota_edi['id']}, parceiro '{parceiros[0]['nome']}', {len(corpo_edi)} bytes")
+    else:
+        etapa("11. OCOREN: GET /rotas/{id}/ocoren devolve o arquivo", False,
+              "nenhuma rota com nfe_chave ou parceiro EDI encontrado")
 
     req("DELETE", f"/sessions/{S}")
     return relatorio(inicio, saude)
