@@ -41,3 +41,64 @@ jobs:
         run: ruff check .
       - name: Testes (pytest + Postgres)
         run: pytest -q
+
+  # Publica a imagem nova e atualiza a api + o voice-agent na conta AWS dev da Rumo.
+  # Só na main (nunca em PR) e só depois do job `backend` passar. Credencial é uma
+  # access key de um usuário IAM dedicado (rumolog-dev-ci-deploy, sem OIDC, política
+  # restrita em infra/envs/dev/ci.tf — só este ECR, só este cluster). Detalhe da
+  # sequência (por quê a migração roda numa task separada antes do update-service)
+  # em infra/README.md.
+  deploy:
+    needs: backend
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE_API: ${{ vars.ECS_SERVICE_API }}
+      ECS_SERVICE_VOICE_AGENT: ${{ vars.ECS_SERVICE_VOICE_AGENT }}
+      ECS_MIGRATE_TASK_FAMILY: ${{ vars.ECS_MIGRATE_TASK_FAMILY }}
+      ECS_SECURITY_GROUP_ID: ${{ vars.ECS_SECURITY_GROUP_ID }}
+      ECS_SUBNET_IDS: ${{ vars.ECS_SUBNET_IDS }}
+      API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build e push da imagem (tags latest + sha do commit)
+        working-directory: backend
+        run: |
+          docker build -t "$ECR_REPOSITORY:latest" -t "$ECR_REPOSITORY:${GITHUB_SHA::7}" .
+          docker push "$ECR_REPOSITORY:latest"
+          docker push "$ECR_REPOSITORY:${GITHUB_SHA::7}"
+
+      - name: Migração (alembic upgrade head + seed) numa task separada
+        run: |
+          TASK_ARN="$(aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --task-definition "$ECS_MIGRATE_TASK_FAMILY" \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$ECS_SUBNET_IDS],securityGroups=[$ECS_SECURITY_GROUP_ID],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' --output text)"
+          echo "task=$TASK_ARN"
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN"
+          EXIT_CODE="$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)"
+          echo "exitCode=$EXIT_CODE"
+          test "$EXIT_CODE" = "0"
+
+      - name: Atualiza api e voice-agent pra imagem nova (force-new-deployment)
+        run: |
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE_API" --force-new-deployment > /dev/null
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE_VOICE_AGENT" --force-new-deployment > /dev/null
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE_API" "$ECS_SERVICE_VOICE_AGENT"
+
+      - name: Confere /health depois do deploy
+        if: env.API_PUBLIC_URL != ''
+        run: curl -fsS "$API_PUBLIC_URL/health"

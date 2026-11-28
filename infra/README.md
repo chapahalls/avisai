@@ -20,7 +20,7 @@ conta.
   da VPC, CloudFront na frente do ALB (`cloudfront.tf`, HTTPS pra fora sem
   domínio próprio), RDS Postgres (`rumolog-dev-db`), ECR, Secrets Manager.
 
-## Deploy em produção: URL pública e migração
+## Deploy em produção: URL pública, migração e CI
 
 A api está no ar em `https://<id>.cloudfront.net` (ver output
 `api_public_url`).
@@ -32,7 +32,43 @@ do serviço — arriscado com `desired_count > 1` ou durante um deployment
 (duas tasks disputando o mesmo `alembic upgrade head` ao mesmo tempo) e
 redundante a cada substituição de task pelo ECS. Agora isso roda uma vez só,
 numa task definition própria sem serviço (`aws_ecs_task_definition.migrate`
-em `ecs.tf`), via `aws ecs run-task`:
+em `ecs.tf`), via `aws ecs run-task` (manualmente ou pela CI, ver abaixo).
+
+### Deploy automático (CI)
+
+A cada push em `main` que passa lint+testes, o job `deploy` do
+[`../.github/workflows/ci.yml`](../.github/workflows/ci.yml):
+
+1. Builda a imagem (`backend/Dockerfile`) e publica no ECR com duas tags:
+   `latest` e o sha curto do commit (rastreabilidade; quem está no ar sempre
+   é a `latest`).
+2. Roda a task de migração (`aws ecs run-task` + `wait tasks-stopped`, mesma
+   lógica do `migrar.sh`) e falha o job se o `exitCode` não for `0` — não
+   segue pro próximo passo com uma migração quebrada.
+3. `aws ecs update-service --force-new-deployment` na `api` e no
+   `voice-agent` e espera os dois ficarem estáveis (`wait services-stable`).
+4. Confere `GET /health` na URL pública.
+
+`api_image`/`voice_agent_image` (`terraform.tfvars`, local) apontam pra tag
+`:latest` do ECR (repo `MUTABLE`) — por isso a CI não precisa rodar
+`tofu apply` nem registrar task definition nova a cada deploy, só trocar o
+conteúdo da tag e forçar o ECS a buscar de novo.
+
+**Credencial:** um usuário IAM dedicado, `rumolog-dev-ci-deploy`
+(`ci.tf`), sem OIDC (decisão do time: a troca por não usar federação de
+curta duração é a política ser bem restrita) — só `ecr:*Push*` neste repo
+ECR, `ecs:UpdateService`/`DescribeServices` nos dois serviços,
+`ecs:RunTask`/`DescribeTasks` só no cluster `rumolog-cluster-dev` e
+`iam:PassRole` só nas duas roles que as tasks já usam. A access key em si
+**não é gerenciada pelo Terraform** (não grava segredo no state): foi criada
+uma vez com `aws iam create-access-key` e vive só nos secrets do GitHub
+Actions (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` do repositório — as
+outras variáveis do job, como cluster/subnets/SG, são *variables* públicas
+do repositório, não secrets, porque não são sensíveis).
+
+### Deploy manual (fallback)
+
+Pra rodar fora da CI (debug, ou se a credencial da CI expirar/for revogada):
 
 ```bash
 cd infra/envs/dev
@@ -40,17 +76,17 @@ cd infra/envs/dev
               # private_subnet_ids e ecs_tasks_security_group_id
 ```
 
-**Ordem do deploy** (a task da api só roda `uvicorn`; não migra mais sozinha):
+**Ordem do deploy manual** (a task da api só roda `uvicorn`; não migra mais
+sozinha):
 
-1. Build e push da imagem nova pro ECR (tag do commit).
-2. `terraform.tfvars` com a tag nova em `api_image`/`voice_agent_image` (ou
-   `tofu apply` já aplica o `command` novo da task da api, se for a primeira
-   vez rodando esta mudança).
-3. `./migrar.sh` — roda o alembic `upgrade head` e o seed **antes** de trocar
+1. Build e push da imagem nova pro ECR (tag `latest`, ou outra — nesse caso
+   ajuste `api_image`/`voice_agent_image` em `terraform.tfvars` e rode
+   `tofu apply`).
+2. `./migrar.sh` — roda o alembic `upgrade head` e o seed **antes** de trocar
    a imagem em produção. Pular este passo com uma imagem que tenha uma
    migração pendente derruba a api (coluna/tabela que o código espera e o
    banco ainda não tem).
-4. `aws ecs update-service --cluster rumolog-cluster-dev --service api
+3. `aws ecs update-service --cluster rumolog-cluster-dev --service api
    --force-new-deployment` (e o mesmo pro `voice-agent`, se a imagem mudou).
 
 O seed (`app/seed.py`) é idempotente e o `alembic upgrade head` não reaplica
@@ -123,10 +159,9 @@ manual do snapshot pra uma instância separada.
   ... GRANT ...`) e atualizar a connection string que o app do sginfra usa.
 - **Imagens**: já builda e publicada no ECR (`rumolog-backend`), tags `latest`
   e a SHA curta do commit. `terraform.tfvars` (local, gitignored) aponta
-  `api_image`/`voice_agent_image` pra essa tag real e `desired_count = 1`
-  nos dois serviços. Depois de um push novo da imagem com a mesma tag, só
-  `aws ecs update-service --force-new-deployment` já pega a versão nova
-  (sem precisar reaplicar o Tofu).
+  `api_image`/`voice_agent_image` pra `:latest` e `desired_count = 1` nos
+  dois serviços — isso agora é automático, ver "Deploy automático (CI)"
+  acima.
 
 ## Como aplicar
 
