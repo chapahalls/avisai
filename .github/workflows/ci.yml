@@ -74,7 +74,8 @@ jobs:
       - name: Build e push da imagem (tags latest + sha do commit)
         working-directory: backend
         run: |
-          docker build -t "$ECR_REPOSITORY:latest" -t "$ECR_REPOSITORY:${GITHUB_SHA::7}" .
+          docker build --build-arg GIT_SHA="${GITHUB_SHA::7}" \
+            -t "$ECR_REPOSITORY:latest" -t "$ECR_REPOSITORY:${GITHUB_SHA::7}" .
           docker push "$ECR_REPOSITORY:latest"
           docker push "$ECR_REPOSITORY:${GITHUB_SHA::7}"
 
@@ -99,6 +100,26 @@ jobs:
           aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE_VOICE_AGENT" --force-new-deployment > /dev/null
           aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE_API" "$ECS_SERVICE_VOICE_AGENT"
 
-      - name: Confere /health depois do deploy
+      # /health agora devolve 503 (não 200) quando "ok" é falso (ver app/main.py), então o -f do curl já
+      # falha o job com banco fora do ar. Além disso confere o `sha` (a tag :latest é mutável; sem isso
+      # dava para "passar" o smoke e o júri ver a imagem anterior) e faz um GET autenticado do OCOREN,
+      # que só funciona se a migração `ultima_sequencia_ocoren` (Empresa, ver alembic/versions) rodou.
+      - name: Confere /health (sha) e um GET do OCOREN depois do deploy
         if: env.API_PUBLIC_URL != ''
-        run: curl -fsS "$API_PUBLIC_URL/health"
+        run: |
+          SHA="${GITHUB_SHA::7}"
+          SAUDE="$(curl -fsS "$API_PUBLIC_URL/health")"
+          echo "$SAUDE"
+          SHA_NO_AR="$(echo "$SAUDE" | jq -r .sha)"
+          if [ "$SHA_NO_AR" != "$SHA" ]; then
+            echo "sha no ar ($SHA_NO_AR) != sha deste deploy ($SHA) — a imagem anterior ainda pode estar no ar" >&2
+            exit 1
+          fi
+
+          TOKEN="$(curl -fsS -X POST "$API_PUBLIC_URL/auth/sso" -H 'Content-Type: application/json' \
+            -d '{"email":"cco@avisai.test"}' | jq -r .token)"
+          ROTA_ID="$(curl -fsS -H "Authorization: Bearer $TOKEN" "$API_PUBLIC_URL/rotas" | jq -r '.[0].id')"
+          PARCEIRO_ID="$(curl -fsS -H "Authorization: Bearer $TOKEN" "$API_PUBLIC_URL/edi/parceiros" | jq -r '.[0].id')"
+          curl -fsS -H "Authorization: Bearer $TOKEN" \
+            "$API_PUBLIC_URL/rotas/$ROTA_ID/ocoren?parceiro=$PARCEIRO_ID" -o /dev/null
+          echo "sha confirmado ($SHA) e GET /rotas/$ROTA_ID/ocoren?parceiro=$PARCEIRO_ID respondeu 200"

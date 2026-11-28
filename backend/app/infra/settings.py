@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     # Banco
     database_url: str = "postgresql+psycopg://avisai:avisai@db:5432/avisai"
 
+    # Sha curto do commit publicado nesta imagem (setado no build, ver backend/Dockerfile e o job `deploy`
+    # do ci.yml). "dev" fora de um build de CI; `/health` expõe para o smoke test confirmar qual commit
+    # está no ar (risco apontado pelo júri: /health não dizia a versão, e a tag :latest é mutável).
+    git_sha: str = "dev"
+
     # Arquivos da viagem: conteúdo persistente, separado dos documentos fiscais fictícios.
     arquivos_dir: str = "data/arquivos"
     arquivos_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0, le=100 * 1024 * 1024)

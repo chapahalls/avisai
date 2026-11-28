@@ -323,7 +323,7 @@ Base local: `http://localhost:8000`. O OpenAPI vivo está em `/docs` e `/openapi
 
 | Método | Caminho | Corpo | O que faz |
 |---|---|---|---|
-| GET | `/health` | — | `banco_ok` (conexão real com o Postgres) e o estado da configuração LiveKit, túnel, Twilio e LLM |
+| GET | `/health` | — | `banco_ok` (conexão real com o Postgres), `sha` (commit publicado na imagem) e o estado da configuração LiveKit, túnel, Twilio e LLM; devolve **503** (não 200) quando `ok` é falso |
 | GET | `/usuarios?role=driver\|cco`<br>`/api/users` | — | perfis persistidos de demonstração |
 | POST | `/usuarios` | `{nome, email}` | cadastra um operador da central (perfil `cco`); 409 se o e-mail já existir |
 | GET | `/livekit/config` | — | diz se o LiveKit está configurado e a `LIVEKIT_URL`; nunca expõe chave ou segredo |

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
@@ -71,11 +72,12 @@ def health():
     from .integracoes.tunel import url_publica
 
     banco = banco_ok()
-    return {
+    corpo = {
         # sem banco, login e qualquer rota de escrita ou leitura de dado real ficam fora do ar;
         # "ok" segue o banco, não só o processo de pé (ver docs/edi/ocoren-integracao.md, risco de deploy no README)
         "ok": banco,
         "banco_ok": banco,
+        "sha": s.git_sha,
         "livekit_configurada": s.livekit_configurada(),
         "twilio_configurado": s.twilio_configurada(),
         "llm_mode": "custom",
@@ -84,6 +86,10 @@ def health():
         "recebedor_modo": s.recebedor_modo,
         "auth_obrigatoria": s.auth_obrigatoria,
     }
+    # 503 com "ok": false: um `curl -fsS`/load balancer que só olha o status HTTP (como o smoke do
+    # job `deploy` em ci.yml) detecta o banco fora do ar, em vez de ler 200 e achar que está tudo bem
+    # (risco apontado pelo júri: "o smoke test é fraco").
+    return JSONResponse(corpo, status_code=200 if banco else 503)
 
 if __name__ == "__main__":
     uvicorn.run("backend.app.main:app", host="0.0.0.0", port=8000, reload=True)

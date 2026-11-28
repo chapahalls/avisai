@@ -88,6 +88,10 @@ resource "aws_ecs_task_definition" "api" {
     # python -c em vez de curl/wget: a imagem (python:3.12-slim) não tem
     # nenhum dos dois instalado. urlopen lança exceção (exit != 0) em erro
     # de conexão ou status >= 400; sem exceção, o script termina com 0.
+    # /health devolve 503 com "ok": false (app/main.py) — então o ECS passa a marcar a task como
+    # "unhealthy" de verdade quando o banco cai, e não só quando o processo trava. Com `retries = 3` e
+    # `interval = 30`, uma queda de banco mais longa que ~90s leva o ECS a reciclar a task (esperado:
+    # sem banco a api não serve pra nada mesmo).
     healthCheck = {
       command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)\""]
       interval    = 30

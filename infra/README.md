@@ -39,15 +39,25 @@ em `ecs.tf`), via `aws ecs run-task` (manualmente ou pela CI, ver abaixo).
 A cada push em `main` que passa lint+testes, o job `deploy` do
 [`../.github/workflows/ci.yml`](../.github/workflows/ci.yml):
 
-1. Builda a imagem (`backend/Dockerfile`) e publica no ECR com duas tags:
-   `latest` e o sha curto do commit (rastreabilidade; quem está no ar sempre
-   é a `latest`).
+1. Builda a imagem (`backend/Dockerfile`, com `--build-arg GIT_SHA=<sha
+   curto>`) e publica no ECR com duas tags: `latest` e o sha curto do commit
+   (rastreabilidade; quem está no ar sempre é a `latest`). O `GIT_SHA` vira
+   uma variável de ambiente dentro do container e aparece em `GET /health`
+   (campo `sha`) — é assim que o smoke do passo 4 confirma que a imagem nova
+   (e não uma anterior, já que `:latest` é mutável) está no ar.
 2. Roda a task de migração (`aws ecs run-task` + `wait tasks-stopped`, mesma
    lógica do `migrar.sh`) e falha o job se o `exitCode` não for `0` — não
    segue pro próximo passo com uma migração quebrada.
 3. `aws ecs update-service --force-new-deployment` na `api` e no
    `voice-agent` e espera os dois ficarem estáveis (`wait services-stable`).
-4. Confere `GET /health` na URL pública.
+4. Confere `GET /health` na URL pública: falha o job se `sha` não for o
+   commit deste deploy, e falha também se `ok` for falso — `/health` devolve
+   **503** (não mais 200) nesse caso (`app/main.py`), então um `curl -fsS`
+   simples já pega banco fora do ar. Em seguida faz login como a central
+   seed (`POST /auth/sso`, sem senha) e um `GET /rotas/{id}/ocoren`
+   autenticado, que só responde 200 se a migração `ultima_sequencia_ocoren`
+   (`alembic/versions/20261127_sequencia_ocoren.py`, coluna em `Empresa`)
+   estiver aplicada no banco em produção.
 
 `api_image`/`voice_agent_image` (`terraform.tfvars`, local) apontam pra tag
 `:latest` do ECR (repo `MUTABLE`) — por isso a CI não precisa rodar
@@ -92,6 +102,42 @@ sozinha):
 O seed (`app/seed.py`) é idempotente e o `alembic upgrade head` não reaplica
 migração já aplicada, então rodar `migrar.sh` de novo sem nada pendente não
 tem efeito.
+
+### Rollback
+
+A task definition sempre aponta pra tag `:latest` (repo ECR `MUTABLE`), que é
+mutável por desenho — isso é o que permite a CI só trocar o conteúdo da tag
+em vez de rodar `tofu apply`/registrar task definition nova a cada deploy.
+A consequência é que **voltar atrás não é reaplicar um commit antigo, é
+reapontar `:latest` pra uma imagem com sha já publicada**, o que já foi
+empurrado automaticamente em todo deploy verde anterior (passo 1 da seção
+acima). O sha em uso hoje é o campo `sha` de `GET /health`; os shas
+anteriores ficam no ECR (`aws ecr list-images --repository-name
+rumolog-backend`) e no histórico de commits da `main`.
+
+```bash
+# 1. Escolha o sha curto (7 chars) do commit "bom" pra voltar (ex.: HEAD~1 em produção).
+SHA_BOM=xxxxxxx
+
+# 2. Reposta a imagem com esse sha como "latest" no mesmo repositório ECR, sem rebuildar.
+aws ecr batch-get-image --repository-name rumolog-backend --image-ids imageTag="$SHA_BOM" \
+  --profile cdk-manager-dev --query 'images[0].imageManifest' --output text > manifest.json
+aws ecr put-image --repository-name rumolog-backend --image-tag latest \
+  --image-manifest file://manifest.json --profile cdk-manager-dev
+
+# 3. Força os dois serviços a buscar a imagem "latest" de novo (a migração NÃO roda sozinha aqui:
+#    se o sha bom precisa de uma migração anterior desfeita, rode isso manualmente antes).
+aws ecs update-service --cluster rumolog-cluster-dev --service api --force-new-deployment
+aws ecs update-service --cluster rumolog-cluster-dev --service voice-agent --force-new-deployment
+aws ecs wait services-stable --cluster rumolog-cluster-dev --services api voice-agent
+
+# 4. Confirme que o sha certo está no ar.
+curl -fsS "$(cd infra/envs/dev && tofu output -raw api_public_url)/health" | jq .sha
+```
+
+Sem domínio registrado pra esse app, `rollback.sh` próprio não existe ainda
+— os passos acima são o comando a rodar hoje; promover isso a um script em
+`infra/envs/dev/` é a próxima melhoria óbvia.
 
 **HTTPS sem domínio próprio**: o ALB (`alb.tf`) só tem listener HTTP/80 —
 sem domínio registrado pra esse app não tem como emitir um certificado ACM
