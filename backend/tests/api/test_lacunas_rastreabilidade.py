@@ -7,7 +7,7 @@
 from sqlmodel import select
 
 from app.infra.db import sessao
-from app.infra.models import Estadia, EventoGeo, LigacaoRecebedor
+from app.infra.models import Estadia, EventoGeo, LigacaoRecebedor, Ocorrencia
 from tests.fakes import tool_call
 from tests.helpers import esperar, eventos
 
@@ -116,6 +116,25 @@ async def test_atraso_na_estrada_liga_para_o_recebedor_com_novo_horario(client, 
     assert aviso.dados["motivo"] == "atraso"
     prompt = fake_livekit.dispatches[-1]["metadata"]["instructions"]
     assert "atras" in prompt and "40 min" in prompt
+
+
+async def test_llm_classifica_atraso_como_fila_mas_estado_da_rota_corrige(client, fake_llm, fake_livekit):
+    """"Trânsito parado" e "fila de caminhões" são falas parecidas; o LLM de verdade às vezes erra
+    essa classificação (score.md 2026-11-27). Na estrada (em_transito) não existe fila de caminhões
+    num recebedor, então o estado da rota corrige e o aviso ao recebedor acontece do mesmo jeito."""
+    sid = (await client.post("/sessions", json={"rota_id": 1})).json()["id"]
+    await client.post("/rotas/1/posicao", json=NO_CAMINHO)
+    fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"fila","descricao":"trânsito parado, uns 40 min de atraso"}'),
+                          "Registrei e vou avisar o recebimento."]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Vou atrasar uns 40 minutos, trânsito parado"))
+    await esperar(lambda: eventos("aviso_recebedor"))
+    with sessao() as s:
+        o = s.exec(select(Ocorrencia)).one()
+        lig = s.exec(select(LigacaoRecebedor)).one()
+    assert o.tipo == "atraso"
+    assert lig.motivo == "atraso"
+    aviso = eventos("aviso_recebedor")[-1]
+    assert aviso.dados["motivo"] == "atraso"
 
 
 async def test_atraso_depois_da_chegada_nao_liga(client, fake_llm):

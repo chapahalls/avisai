@@ -34,3 +34,18 @@ def test_acidente_com_ferido_e_grave():
 def test_resumo_para_o_cco():
     r = oc.resumo("acidente", "acidente na pista", {"feridos": "não", "envolvido": "carro na frente", "consegue_seguir": "sim"})
     assert "acidente na pista" in r and "feridos: não" in r and "consegue seguir: sim" in r
+
+
+def test_fila_na_estrada_e_corrigida_para_atraso():
+    """Não existe fila de caminhões num recebedor enquanto o caminhão ainda está na pista (score.md 2026-11-27)."""
+    assert oc.corrigir_tipo_por_estado("fila", "em_transito") == "atraso"
+
+
+def test_fila_fora_da_estrada_nao_e_alterada():
+    for status in ("planejada", "na_origem", "aproximando", "no_destino", "descarregada"):
+        assert oc.corrigir_tipo_por_estado("fila", status) == "fila", status
+
+
+def test_outros_tipos_nunca_sao_alterados():
+    for tipo in ("atraso", "avaria", "acidente", "doca_ocupada", "documento", "recusa", "outro"):
+        assert oc.corrigir_tipo_por_estado(tipo, "em_transito") == tipo

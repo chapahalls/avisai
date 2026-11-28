@@ -248,6 +248,8 @@ def registrar_ocorrencia(
             raise consultas.NaoEncontrado("Rota não encontrada")
         from ..dominio import ocorrencias as roteiro
 
+        # corrige fila↔atraso pelo estado da rota, não só pela classificação livre do LLM (ver comentário em dominio/ocorrencias.py)
+        tipo = roteiro.corrigir_tipo_por_estado(tipo, r.status)
         # fecha ocorrências antigas ainda abertas (o motorista mudou de assunto)
         for antiga in s.exec(select(Ocorrencia).where(Ocorrencia.rota_id == rota_id, Ocorrencia.completa == False)).all():  # noqa: E712
             antiga.completa = True
