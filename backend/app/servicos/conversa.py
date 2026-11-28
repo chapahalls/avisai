@@ -204,8 +204,9 @@ async def _executar(c, sa: SessaoAgente, nome: str, args: dict, fala: str) -> di
 def _anexar_detalhe_sem_ferramenta(c, sa: SessaoAgente, fala: str) -> None:
     """O LLM às vezes responde em texto, sem chamar nenhuma ferramenta, depois de uma pergunta de
     aprofundamento (ex.: "Uns cinco caminhões" depois de "quantos caminhões tem na sua frente?").
-    Se não chamou nenhuma ferramenta neste turno e há uma ocorrência aberta esperando resposta,
-    anexa a própria fala como detalhe pela mesma regra da contingência — sem esperar o LLM chamar
+    Se este turno não chamou ferramenta nenhuma (ou seja, a fala não era sobre outro assunto já
+    tratado por outra ferramenta) e há uma ocorrência aberta esperando resposta, anexa a própria
+    fala como detalhe pela mesma regra da contingência — sem esperar o LLM chamar
     detalhar_ocorrencia."""
     from . import tasks as tasks_srv
 
@@ -261,7 +262,7 @@ async def responder(c, sa: SessaoAgente, msgs_in: list[dict]) -> AsyncIterator[s
                 break
             if not calls:
                 break
-            chamou_ferramenta = True
+            chamou_ferramenta = True  # a fala foi consumida por outra ferramenta, não deve virar detalhe de ocorrência
             msgs.append({"role": "assistant", "content": "", "tool_calls": calls})
             for tc in calls:
                 try:

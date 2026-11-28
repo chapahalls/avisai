@@ -83,7 +83,7 @@ class Settings(BaseSettings):
 
     # Sha curto do commit publicado nesta imagem (setado no build, ver backend/Dockerfile e o job `deploy`
     # do ci.yml). "dev" fora de um build de CI; `/health` expõe para o smoke test confirmar qual commit
-    # está no ar (risco apontado pelo júri: /health não dizia a versão, e a tag :latest é mutável).
+    # está no ar — a tag `:latest` é mutável, então só o status HTTP não diz qual versão subiu.
     git_sha: str = "dev"
 
     # Arquivos da viagem: conteúdo persistente, separado dos documentos fiscais fictícios.

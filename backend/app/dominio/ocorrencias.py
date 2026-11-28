@@ -125,9 +125,9 @@ def extrair_varios(faltantes: list[str], fala: str) -> dict:
 # Enquanto o caminhão ainda está na estrada (em_transito, antes da geocerca de aproximação),
 # não existe fila de caminhões num recebedor: só dá pra fazer fila na doca depois de chegar lá.
 # "Trânsito parado" e "fila de caminhões" são falas parecidas e o LLM de verdade às vezes
-# classifica a primeira como `fila` (risco do júri, score.md 2026-11-27: a etapa de avisar o
-# recebedor do atraso dependia só da classificação livre do modelo). Corrige pelo estado da
-# rota, que é determinístico, em vez de confiar só no que o modelo escolheu.
+# classifica a primeira como `fila` — e avisar o recebedor do atraso não pode depender só da
+# classificação livre do modelo. Corrige pelo estado da rota, que é determinístico, em vez de
+# confiar só no que o modelo escolheu.
 def corrigir_tipo_por_estado(tipo: str, status_rota: str) -> str:
     if tipo == "fila" and status_rota == "em_transito":
         return "atraso"

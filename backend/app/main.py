@@ -86,13 +86,12 @@ def health():
         "recebedor_modo": s.recebedor_modo,
         "auth_obrigatoria": s.auth_obrigatoria,
         # declarado no README: liga pro recebedor avisando a chegada antes do caminhão passar a
-        # geocerca (abertura do pitch). Visível aqui pra não ficar escondido num .tfvars/ecs.tf
-        # (risco do júri, score.md 2026-11-27: a demo pública não mostra se está ligado).
+        # geocerca (abertura do pitch). A demo pública precisa mostrar se essa ligação na aproximação
+        # está ativa, em vez de depender de abrir um .tfvars/ecs.tf para saber.
         "ligar_recebedor_na_aproximacao": s.ligar_recebedor_na_aproximacao,
     }
     # 503 com "ok": false: um `curl -fsS`/load balancer que só olha o status HTTP (como o smoke do
-    # job `deploy` em ci.yml) detecta o banco fora do ar, em vez de ler 200 e achar que está tudo bem
-    # (risco apontado pelo júri: "o smoke test é fraco").
+    # job `deploy` em ci.yml) detecta o banco fora do ar, em vez de ler 200 e achar que está tudo bem.
     return JSONResponse(corpo, status_code=200 if banco else 503)
 
 if __name__ == "__main__":
