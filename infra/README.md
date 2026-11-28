@@ -64,6 +64,8 @@ A cada push em `main` que passa lint+testes, o job `deploy` do
 `tofu apply` nem registrar task definition nova a cada deploy, só trocar o
 conteúdo da tag e forçar o ECS a buscar de novo.
 
+### Credencial de deploy da CI e prazo de disponibilidade
+
 **Credencial:** um usuário IAM dedicado, `rumolog-dev-ci-deploy`
 (`ci.tf`), sem OIDC (decisão do time: a troca por não usar federação de
 curta duração é a política ser bem restrita) — só `ecr:*Push*` neste repo
@@ -75,6 +77,15 @@ uma vez com `aws iam create-access-key` e vive só nos secrets do GitHub
 Actions (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` do repositório — as
 outras variáveis do job, como cluster/subnets/SG, são *variables* públicas
 do repositório, não secrets, porque não são sensíveis).
+
+**Compromisso de disponibilidade:** essa access key não expira por desenho
+(risco apontado no score.md), então o time se compromete por escrito a não
+revogá-la e a manter o cluster `rumolog-cluster-dev` (ECS, RDS, CloudFront)
+no ar, saudável e sem alteração deliberada até **15/12/2026** — cobre a
+reavaliação de 12/12 do Hack Brasil e os dias de congelamento da `main`
+(01/12 a 12/12, quando não há mais push para alterar a imagem no ar). Depois
+de 15/12, a recomendação do próprio júri é seguida: revogar a access key
+(`aws iam delete-access-key`) e apagar o usuário `rumolog-dev-ci-deploy`.
 
 ### Deploy manual (fallback)
 
