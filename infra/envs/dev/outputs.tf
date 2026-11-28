@@ -2,6 +2,19 @@ output "cluster_name" {
   value = aws_ecs_cluster.rumolog.name
 }
 
+output "migrate_task_definition_arn" {
+  description = "Task definition de migração (não é um serviço; roda uma vez por deploy via `aws ecs run-task`, ver infra/README.md)."
+  value       = aws_ecs_task_definition.migrate.arn
+}
+
+output "private_subnet_ids" {
+  value = data.aws_subnets.private.ids
+}
+
+output "ecs_tasks_security_group_id" {
+  value = aws_security_group.ecs_tasks.id
+}
+
 output "ecr_repository_url" {
   value = aws_ecr_repository.rumolog_backend.repository_url
 }

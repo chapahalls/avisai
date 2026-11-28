@@ -70,7 +70,12 @@ resource "aws_ecs_task_definition" "api" {
     name      = "api"
     image     = var.api_image
     essential = true
-    command   = ["sh", "-c", "alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    # Só a app. A migração (alembic upgrade head) e o seed saíram do comando de todo
+    # replica/reinício da task — ver aws_ecs_task_definition.migrate abaixo e
+    # "Deploy em produção" no infra/README.md. Correndo em cada task, duas rodando
+    # (ou uma reiniciando durante um deploy) disputavam o mesmo alembic upgrade head
+    # ao mesmo tempo, e o seed repetia a cada troca de task sem necessidade.
+    command = ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
     portMappings = [{
       containerPort = 8000
@@ -88,7 +93,7 @@ resource "aws_ecs_task_definition" "api" {
       interval    = 30
       timeout     = 5
       retries     = 3
-      startPeriod = 60 # dá tempo pro alembic upgrade + seed antes do 1º check
+      startPeriod = 30
     }
 
     logConfiguration = {
@@ -97,6 +102,39 @@ resource "aws_ecs_task_definition" "api" {
         "awslogs-group"         = aws_cloudwatch_log_group.api.name
         "awslogs-region"        = var.region
         "awslogs-stream-prefix" = "api"
+      }
+    }
+  }])
+}
+
+# Task de migração (não é um serviço: não fica no ar, não tem desired_count).
+# Roda uma vez por deploy via `aws ecs run-task` (script em infra/envs/dev/migrar.sh),
+# nunca pelo CMD da task da api — assim não disputa o alembic upgrade head entre
+# replicas/reinícios e o seed não repete a cada troca de task.
+resource "aws_ecs_task_definition" "migrate" {
+  family                   = "rumolog-dev-migrate"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.api_cpu
+  memory                   = var.api_memory
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([{
+    name      = "migrate"
+    image     = var.api_image
+    essential = true
+    command   = ["sh", "-c", "alembic upgrade head && python -m app.seed"]
+
+    environment = [for k, v in local.common_environment : { name = k, value = v }]
+    secrets     = local.common_secrets
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.api.name
+        "awslogs-region"        = var.region
+        "awslogs-stream-prefix" = "migrate"
       }
     }
   }])

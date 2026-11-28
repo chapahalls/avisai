@@ -23,9 +23,39 @@ conta.
 ## Deploy em produção: URL pública e migração
 
 A api está no ar em `https://<id>.cloudfront.net` (ver output
-`api_public_url`). `alembic upgrade head` e `python -m app.seed` rodam
-automaticamente no `CMD` do container (`backend/Dockerfile`) antes do
-`uvicorn` subir — já confirmado rodando contra o `rumolog-dev-db` novo.
+`api_public_url`).
+
+**Migração: task separada, não o `CMD` da task da api.** `alembic upgrade
+head` e `python -m app.seed` rodavam no `CMD` do container da api
+(`backend/Dockerfile`), ou seja, em todo start/reinício de **todo** replica
+do serviço — arriscado com `desired_count > 1` ou durante um deployment
+(duas tasks disputando o mesmo `alembic upgrade head` ao mesmo tempo) e
+redundante a cada substituição de task pelo ECS. Agora isso roda uma vez só,
+numa task definition própria sem serviço (`aws_ecs_task_definition.migrate`
+em `ecs.tf`), via `aws ecs run-task`:
+
+```bash
+cd infra/envs/dev
+./migrar.sh   # usa os outputs cluster_name, migrate_task_definition_arn,
+              # private_subnet_ids e ecs_tasks_security_group_id
+```
+
+**Ordem do deploy** (a task da api só roda `uvicorn`; não migra mais sozinha):
+
+1. Build e push da imagem nova pro ECR (tag do commit).
+2. `terraform.tfvars` com a tag nova em `api_image`/`voice_agent_image` (ou
+   `tofu apply` já aplica o `command` novo da task da api, se for a primeira
+   vez rodando esta mudança).
+3. `./migrar.sh` — roda o alembic `upgrade head` e o seed **antes** de trocar
+   a imagem em produção. Pular este passo com uma imagem que tenha uma
+   migração pendente derruba a api (coluna/tabela que o código espera e o
+   banco ainda não tem).
+4. `aws ecs update-service --cluster rumolog-cluster-dev --service api
+   --force-new-deployment` (e o mesmo pro `voice-agent`, se a imagem mudou).
+
+O seed (`app/seed.py`) é idempotente e o `alembic upgrade head` não reaplica
+migração já aplicada, então rodar `migrar.sh` de novo sem nada pendente não
+tem efeito.
 
 **HTTPS sem domínio próprio**: o ALB (`alb.tf`) só tem listener HTTP/80 —
 sem domínio registrado pra esse app não tem como emitir um certificado ACM
