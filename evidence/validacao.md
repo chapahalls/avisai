@@ -79,8 +79,14 @@ teste com pessoas falando (qualidade do ASR, latência, barge-in).
 
 Rodei a validação 4 vezes contra a produção (CloudFront) na mesma sessão, sempre com o LLM de
 verdade, com o conserto desta rodada já no ar (uma 5ª tentativa, antes da rodada 1, quebrou com
-`TypeError` num `GET /ligacoes` durante a espera da 3d — erro de transporte HTTP, não da lógica
-medida; excluída e refeita como a rodada 1 abaixo):
+`TypeError` num `GET /ligacoes` durante a espera da 3d — excluída e refeita como a rodada 1
+abaixo). Investigado nos logs do CloudWatch (`/ecs/rumolog-dev/api`) depois: as 22 chamadas a
+`GET /ligacoes`/`GET /ligacoes/{id}` na janela desta sessão (as 4 rodadas e a tentativa
+descartada) devolveram todas `200`, nenhum `5xx` — não foi a API que falhou. A causa mais
+provável é uma falha de rede transitória entre o script e o CloudFront (o próprio script não
+confere o status antes de iterar o corpo da resposta como lista, então um erro de transporte
+qualquer vira esse `TypeError` em vez de uma mensagem clara — vale endurecer isso depois, fora do
+escopo desta rodada):
 
 | Rodada | 3d (atraso×fila) | 4c (doca/previsão) | 5e (nova ocorrência fila) | 5e2 (fila detalhada) | Total |
 |---|---|---|---|---|---|
