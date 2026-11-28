@@ -276,3 +276,24 @@ def test_resposta_livre_ocorrencia_ignora_outro_problema():
 
 def test_resposta_livre_ocorrencia_sem_ocorrencia_aberta():
     assert ct.resposta_livre_ocorrencia(None, None, "Uns cinco caminhões") == {}
+
+
+@pytest.mark.parametrize("fala", ["ok", "beleza", "obrigado", "tô chegando"])
+def test_resposta_livre_ocorrencia_descarta_confirmacao_generica(fala):
+    """Sem número, hora/duração, sim/não explícito ou o padrão do próprio campo, uma confirmação
+    genérica não responde nada da ocorrência (score.md: "beleza, obrigado" virava quantos=fala)."""
+    assert ct.resposta_livre_ocorrencia("fila", ["quantos", "previsao"], fala) == {}
+
+
+def test_resposta_livre_ocorrencia_aceita_sim_nao_explicito():
+    assert ct.resposta_livre_ocorrencia("acidente", ["feridos"], "sim") == {"feridos": "sim"}
+
+
+def test_resposta_livre_ocorrencia_aceita_hora_ou_duracao():
+    achados = ct.resposta_livre_ocorrencia("doca_ocupada", ["previsao"], "Chega em uma hora")
+    assert achados == {"previsao": "Chega em uma hora"}
+
+
+def test_resposta_livre_ocorrencia_aceita_padrao_do_detecta_sem_numero():
+    achados = ct.resposta_livre_ocorrencia("avaria", ["consegue_seguir"], "Dá pra seguir sim")
+    assert achados == {"consegue_seguir": "sim"}

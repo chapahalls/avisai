@@ -288,6 +288,12 @@ def detalhar_ocorrencia(c, rota_id: int, campos: dict, transcricao: Optional[str
                             .order_by(Ocorrencia.id.desc())).first()
         if not aberta:
             return {"ok": False, "mensagem": "Não há ocorrência para detalhar. Se for um problema novo, use registrar_ocorrencia."}
+    elif transcricao and roteiro.deve_abrir_fila_separada(aberta.tipo, consultas.rota(rota_id).status, transcricao):
+        # O LLM de verdade reaproveita o atraso aberto na estrada em vez de abrir uma ocorrência de
+        # fila nova depois da chegada (mesma técnica determinística por estado da 3d, ver
+        # dominio/ocorrencias.deve_abrir_fila_separada) — registrar_ocorrencia fecha o atraso sozinho.
+        aberta = registrar_ocorrencia(c, rota_id, "fila", transcricao, transcricao=transcricao)
+        complemento = False
     aceitos = set(roteiro.campos(aberta.tipo)) | (set(roteiro.ROTULO) if complemento else set())
     validos = {k: str(v).strip() for k, v in (campos or {}).items() if k in aceitos and str(v).strip()}
     with sessao() as s:

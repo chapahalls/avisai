@@ -358,11 +358,21 @@ def normalizar_doca(valor: Optional[str]) -> Optional[str]:
     return v
 
 
+_NUMERO = r"\b(\d+|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)\b"
+_SIM_NAO_LITERAL = r"\b(sim|nao)\b"  # mais estrito que SIM/NAO: "ok"/"beleza"/"certo" também confirmam
+# a central (_motorista), mas não respondem nada da ocorrência — ver resposta_livre_ocorrencia.
+
+
 def resposta_livre_ocorrencia(tipo: Optional[str], faltantes: Optional[list], fala: str) -> dict:
     """A fala só vale como detalhe da ocorrência aberta se não for uma pergunta do motorista nem
     mencionar outro tipo de ocorrência (mudou de assunto) — mesma regra da contingência (_motorista),
     usada também na borda da conversa (ver conversa.py) quando o LLM de verdade responde em texto e
-    não chama detalhar_ocorrencia depois de uma pergunta de aprofundamento."""
+    não chama detalhar_ocorrencia depois de uma pergunta de aprofundamento.
+
+    Além disso, só anexa se houver algo reconhecível pra anexar: o padrão do 1º campo que falta
+    (`_DETECTA`), um número, uma hora/duração ou um sim/não explícito. Uma confirmação genérica
+    ("ok", "beleza", "obrigado", "tô chegando") não responde nada da ocorrência — sem essa guarda,
+    extrair_varios grava a fala inteira no 1º campo que falta mesmo assim."""
     if not tipo or not faltantes:
         return {}
     t = normalizar(fala or "")
@@ -370,6 +380,9 @@ def resposta_livre_ocorrencia(tipo: Optional[str], faltantes: Optional[list], fa
         return {}
     from . import ocorrencias as roteiro
 
+    tem_conteudo = bool(roteiro.detectar([faltantes[0]], fala)) or _tem(t, _NUMERO, DURACAO, _SIM_NAO_LITERAL)
+    if not tem_conteudo:
+        return {}
     return roteiro.extrair_varios(faltantes, fala)
 
 

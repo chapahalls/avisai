@@ -134,6 +134,25 @@ def corrigir_tipo_por_estado(tipo: str, status_rota: str) -> str:
     return tipo
 
 
+_FILA_NA_DOCA = r"\bfila\b|\bcaminhoes\s+na\s+frente\b"
+
+
+def indica_fila_na_doca(fala: str) -> bool:
+    """"Fila" ou "caminhões na frente" — as mesmas palavras que `corrigir_tipo_por_estado` trata
+    como atraso enquanto o caminhão está na estrada, mas que passam a descrever um assunto novo
+    depois que ele chega: só existe fila de caminhões numa doca depois de chegar lá."""
+    return bool(re.search(_FILA_NA_DOCA, normalizar(fala or "")))
+
+
+def deve_abrir_fila_separada(tipo_aberto: Optional[str], status_rota: str, fala: str) -> bool:
+    """Mesma técnica determinística por estado de `corrigir_tipo_por_estado`, na direção
+    contrária: depois da chegada (StatusRota.NO_DESTINO), um atraso que ficou aberto da estrada
+    não é o mesmo assunto que "tem fila"/"caminhões na frente" na doca — é uma ocorrência nova.
+    Sem isso, o LLM de verdade reaproveita a ocorrência de atraso (chamando detalhar_ocorrencia
+    nela) em vez de abrir uma de fila, e o detalhe da fila (quantos, previsão) nunca é perguntado."""
+    return tipo_aberto == "atraso" and status_rota == "no_destino" and indica_fila_na_doca(fala)
+
+
 def grave(tipo: str, detalhes: dict) -> bool:
     """Acidente com ferido é grave: o agente orienta ligar 192/193 e o CCO recebe alerta crítico."""
     return tipo == "acidente" and detalhes.get("feridos") == "sim"

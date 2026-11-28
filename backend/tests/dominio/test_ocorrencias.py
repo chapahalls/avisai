@@ -49,3 +49,18 @@ def test_fila_fora_da_estrada_nao_e_alterada():
 def test_outros_tipos_nunca_sao_alterados():
     for tipo in ("atraso", "avaria", "acidente", "doca_ocupada", "documento", "recusa", "outro"):
         assert oc.corrigir_tipo_por_estado(tipo, "em_transito") == tipo
+
+
+# ---------- 5e/5e2: fila na doca depois da chegada não é o atraso aberto na estrada ----------
+
+def test_indica_fila_na_doca():
+    assert oc.indica_fila_na_doca("Tem uma fila de caminhões aqui na portaria")
+    assert oc.indica_fila_na_doca("Uns cinco caminhões na frente")
+    assert not oc.indica_fila_na_doca("Vou atrasar uns 40 minutos, trânsito parado")
+
+
+def test_deve_abrir_fila_separada_so_depois_da_chegada_com_atraso_aberto():
+    assert oc.deve_abrir_fila_separada("atraso", "no_destino", "Tem uma fila de caminhões aqui")
+    assert not oc.deve_abrir_fila_separada("atraso", "em_transito", "Tem uma fila de caminhões aqui")
+    assert not oc.deve_abrir_fila_separada("fila", "no_destino", "Tem uma fila de caminhões aqui")
+    assert not oc.deve_abrir_fila_separada("atraso", "no_destino", "Vou atrasar mais uns minutos")

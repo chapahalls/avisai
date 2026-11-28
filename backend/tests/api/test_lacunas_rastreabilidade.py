@@ -146,3 +146,24 @@ async def test_atraso_depois_da_chegada_nao_liga(client, fake_llm):
 
     await asyncio.sleep(0.2)
     assert not [e for e in eventos("aviso_recebedor") if e.dados.get("motivo") == "atraso"]
+
+
+async def test_fila_na_doca_depois_da_chegada_abre_ocorrencia_nova_em_vez_de_virar_detalhe_do_atraso(client, fake_llm):
+    """Mesma técnica determinística por estado da 3d (test_llm_classifica_atraso_como_fila_mas_estado_da_rota_corrige),
+    na direção contrária: depois da chegada, o atraso aberto na estrada não é o mesmo assunto que "tem fila"/
+    "caminhões na frente" na doca. O LLM de verdade às vezes chama detalhar_ocorrencia no atraso em vez de
+    registrar_ocorrencia pra fila nova — o estado da rota corrige pela mesma regra (ver dominio/ocorrencias.
+    deve_abrir_fila_separada)."""
+    sid = (await client.post("/sessions", json={"rota_id": 1})).json()["id"]
+    await client.post("/rotas/1/posicao", json=NO_CAMINHO)
+    fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"atraso","descricao":"uns 40 min de atraso"}'), "Ok."]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Vou atrasar uns 40 minutos"))
+    await client.post("/rotas/1/chegada")
+    fake_llm.respostas = [tool_call("detalhar_ocorrencia", '{"motivo":"Tem uma fila de caminhões aqui na doca"}'), "Entendi."]
+    await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Tem uma fila de caminhões aqui na doca"))
+    with sessao() as s:
+        tipos = sorted(o.tipo for o in s.exec(select(Ocorrencia)).all())
+    assert tipos == ["atraso", "fila"]
+    with sessao() as s:
+        atraso = s.exec(select(Ocorrencia).where(Ocorrencia.tipo == "atraso")).one()
+    assert atraso.completa  # registrar_ocorrencia fecha o atraso sozinho ao abrir a fila nova
