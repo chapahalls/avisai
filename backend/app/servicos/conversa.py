@@ -201,6 +201,22 @@ async def _executar(c, sa: SessaoAgente, nome: str, args: dict, fala: str) -> di
         return {"ok": False, "erro": str(e)}
 
 
+def _anexar_detalhe_sem_ferramenta(c, sa: SessaoAgente, fala: str) -> None:
+    """O LLM às vezes responde em texto, sem chamar nenhuma ferramenta, depois de uma pergunta de
+    aprofundamento (ex.: "Uns cinco caminhões" depois de "quantos caminhões tem na sua frente?").
+    Se não chamou nenhuma ferramenta neste turno e há uma ocorrência aberta esperando resposta,
+    anexa a própria fala como detalhe pela mesma regra da contingência — sem esperar o LLM chamar
+    detalhar_ocorrencia."""
+    from . import tasks as tasks_srv
+
+    aberta = tasks_srv.ocorrencia_aberta(sa.rota_id)
+    if not aberta or not aberta.faltantes:
+        return
+    achados = contingencia.resposta_livre_ocorrencia(aberta.tipo, aberta.faltantes, fala)
+    if achados:
+        tasks_srv.detalhar_ocorrencia(c, sa.rota_id, achados, transcricao=fala)
+
+
 async def responder(c, sa: SessaoAgente, msgs_in: list[dict]) -> AsyncIterator[str]:
     """Gera o texto da resposta em pedaços (para o SSE começar antes do fim)."""
     fala = ultima_fala(msgs_in)
@@ -224,6 +240,8 @@ async def responder(c, sa: SessaoAgente, msgs_in: list[dict]) -> AsyncIterator[s
         msgs.insert(1 if msgs and msgs[0].get("role") == "system" else 0, {"role": "system", "content": estado(c, sa.rota_id)})
         schemas = ferramentas.schemas(sa.papel)
         t0 = time.monotonic()
+        chamou_ferramenta = False
+        upstream_ok = True
         for _ in range(MAX_PASSADAS):
             calls = None
             try:
@@ -237,11 +255,13 @@ async def responder(c, sa: SessaoAgente, msgs_in: list[dict]) -> AsyncIterator[s
                         calls = ev["tool_calls"]
             except Exception as e:  # noqa: BLE001
                 log.error("LLM upstream falhou: %s", e)
+                upstream_ok = False
                 if not dito:
                     yield await contingencia()
                 break
             if not calls:
                 break
+            chamou_ferramenta = True
             msgs.append({"role": "assistant", "content": "", "tool_calls": calls})
             for tc in calls:
                 try:
@@ -253,6 +273,8 @@ async def responder(c, sa: SessaoAgente, msgs_in: list[dict]) -> AsyncIterator[s
         if not dito:
             dito.append("Certo.")
             yield "Certo."
+        if upstream_ok and not chamou_ferramenta and sa.papel == Papel.MOTORISTA:
+            _anexar_detalhe_sem_ferramenta(c, sa, fala)
 
     texto = "".join(dito).strip()
     registrar_turno(c, sa, "assistant", texto)

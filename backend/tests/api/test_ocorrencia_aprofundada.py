@@ -96,6 +96,36 @@ async def test_llm_recebe_a_proxima_pergunta_e_detalha(client, fake_llm):
     assert "seguir" in sistema  # a próxima pergunta vai como pendência
 
 
+async def test_llm_nao_chama_detalhar_mas_a_fala_e_anexada_como_detalhe(client, fake_llm):
+    """O LLM de verdade às vezes responde em texto, sem chamar detalhar_ocorrencia, depois da
+    pergunta de aprofundamento — a conversa anexa a própria fala como detalhe sem esperar a
+    ferramenta, pra Task do CCO não ficar sem a resposta que o motorista já deu."""
+    sid = await _sessao(client)
+    fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"fila","descricao":"fila de caminhões na portaria"}'),
+                          "Quantos caminhões tem na sua frente?"]
+    await _falar(client, sid, "Tem uma fila de caminhões aqui")
+    assert _oc().faltantes == ["quantos", "previsao"]
+
+    fake_llm.respostas = ["Entendido, e a portaria deu alguma previsão?"]  # texto só, sem chamar a ferramenta
+    await _falar(client, sid, "Uns cinco caminhões na frente")
+    oc = _oc()
+    assert oc.detalhes.get("quantos") == "Uns cinco caminhões na frente"
+    assert oc.faltantes == ["previsao"]
+
+
+async def test_llm_chama_outra_ferramenta_nao_anexa_fala_errada(client, fake_llm):
+    """Se o LLM chamou outra ferramenta neste turno, a fala já foi tratada por ela — não é um caso
+    de "esqueceu de chamar detalhar_ocorrencia", então não deve virar detalhe por engano."""
+    sid = await _sessao(client)
+    fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"fila","descricao":"fila de caminhões na portaria"}'),
+                          "Quantos caminhões tem na sua frente?"]
+    await _falar(client, sid, "Tem uma fila de caminhões aqui")
+
+    fake_llm.respostas = [tool_call("consultar_documento", '{"pergunta":"qual o peso da nota?"}'), "A NF-e tem 20.000 kg."]
+    await _falar(client, sid, "Ah, qual o peso da nota mesmo?")
+    assert _oc().faltantes == ["quantos", "previsao"]  # a pergunta foi atendida por consultar_documento
+
+
 async def test_prompt_pede_para_se_aprofundar(client, fake_livekit):
     await _sessao(client)
     prompt = fake_livekit.dispatches[-1]["metadata"]["instructions"]

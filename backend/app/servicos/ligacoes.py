@@ -184,6 +184,18 @@ def _frase_motorista(previsao: Optional[str], doca: Optional[str], motivo: Optio
     return texto
 
 
+def transcricao_recebedor(ligacao_id: Optional[int]) -> str:
+    """Tudo o que o recebedor disse nesta ligação, numa frase só — para extrair doca/previsão por
+    regra quando o LLM chama registrar_resposta_recebedor sem preencher os campos (ver ferramentas.py)."""
+    if not ligacao_id:
+        return ""
+    with sessao() as s:
+        lig = s.get(LigacaoRecebedor, ligacao_id)
+    if not lig or not lig.transcricao:
+        return ""
+    return " ".join(e.get("texto", "") for e in lig.transcricao if e.get("quem") == "recebedor")
+
+
 def regra_nao_recebe(rota_id: int) -> str:
     from sqlmodel import select
 

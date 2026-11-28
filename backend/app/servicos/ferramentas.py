@@ -74,8 +74,20 @@ async def _descarga(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
 
 
 async def _resposta_recebedor(c, sa: SessaoAgente, args: dict, fala: str) -> dict:
+    from ..dominio import contingencia
+
     recebe = args.get("recebe_hoje")
-    await ligacoes.registrar_resposta(c, sa.id, args.get("previsao"), args.get("doca"), args.get("motivo"),
+    doca = contingencia.normalizar_doca(args.get("doca"))
+    previsao = args.get("previsao")
+    if doca is None or previsao is None:
+        # O LLM às vezes diz a doca/previsão em voz mas chama a ferramenta sem preencher o campo
+        # estruturado: extrai da própria transcrição da ligação com a mesma regra determinística
+        # usada na contingência, em vez de perder o dado.
+        texto = " ".join(x for x in (ligacoes.transcricao_recebedor(sa.ligacao_id), fala) if x)
+        doca_extraida, previsao_extraida, _ = contingencia.extrair_doca_previsao(texto)
+        doca = doca if doca is not None else doca_extraida
+        previsao = previsao if previsao is not None else previsao_extraida
+    await ligacoes.registrar_resposta(c, sa.id, previsao, doca, args.get("motivo"),
                                       args.get("resumo") or fala, recebe_hoje=None if recebe is None else bool(recebe))
     return {"ok": True, "mensagem": "Resposta registrada e repassada ao motorista e ao CCO."}
 

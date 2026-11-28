@@ -113,6 +113,37 @@ async def test_recebedor_responde_doca_e_motorista_ouve(client, fake_llm, fake_l
     assert fala["prioridade"] == "INTERRUPT" and "doca 4" in fala["texto"]
 
 
+async def test_resposta_recebedor_tira_o_prefixo_doca_do_campo(client, fake_llm, container):
+    """O LLM às vezes devolve o campo doca com o prefixo ('doca 4') em vez de só o identificador —
+    a ferramenta normaliza antes de persistir, sem depender do LLM acertar o formato do schema."""
+    await _sessao(client)
+    lig = await ligacoes.ligar(container, 1, "cco_sem_resposta")
+    sid_rec = obter(LigacaoRecebedor, lig.id).sessao_id
+    fake_llm.respostas = [
+        tool_call("registrar_resposta_recebedor", '{"previsao":"em 40 minutos","doca":"doca 4","resumo":"A doca 4 libera em 40 minutos."}'),
+        "Então a doca 4 libera em 40 minutos, certo? Obrigada!",
+    ]
+    await client.post("/v1/chat/completions", json=corpo("A doca 4 libera em 40 minutos"),
+                      headers={"X-Avisai-Sessao": str(sid_rec)})
+    assert obter(LigacaoRecebedor, lig.id).doca == "4"
+
+
+async def test_resposta_recebedor_extrai_doca_e_previsao_quando_llm_nao_preenche(client, fake_llm, container):
+    """O LLM às vezes chama a ferramenta sem os campos estruturados, mesmo o recebedor tendo dito a
+    doca e a previsão em voz — extrai da própria transcrição da ligação, em vez de perder o dado."""
+    await _sessao(client)
+    lig = await ligacoes.ligar(container, 1, "cco_sem_resposta")
+    sid_rec = obter(LigacaoRecebedor, lig.id).sessao_id
+    fake_llm.respostas = [
+        tool_call("registrar_resposta_recebedor", '{"previsao":null,"doca":null,"resumo":"A doca 4 libera em 40 minutos."}'),
+        "Então a doca 4 libera em 40 minutos, certo? Obrigada!",
+    ]
+    await client.post("/v1/chat/completions", json=corpo("A doca 4 libera em 40 minutos"),
+                      headers={"X-Avisai-Sessao": str(sid_rec)})
+    lig = obter(LigacaoRecebedor, lig.id)
+    assert lig.doca == "4" and lig.previsao == "em 40 minutos"
+
+
 async def test_estado_vivo_vai_para_o_llm_sem_campos_de_transporte(client, fake_llm):
     sid = await _sessao(client)
     await client.post(f"/v1/chat/completions?sessao={sid}", json=corpo("Como tá?"))

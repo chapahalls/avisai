@@ -234,3 +234,45 @@ def test_uma_fala_responde_varias_perguntas_da_ocorrencia():
     d = ct.decidir("motorista", "furou o pneu, mas a carga tá inteira e consigo seguir", e)
     assert d.ferramenta == "detalhar_ocorrencia"
     assert set(d.args) == {"o_que", "consegue_seguir", "carga"} and d.args["consegue_seguir"] == "sim"
+
+
+# ---------- borda das ferramentas: 4c (doca/previsão) e 5e2 (ocorrência detalhada) ----------
+
+@pytest.mark.parametrize("valor,esperado", [
+    ("doca 4", "4"),
+    ("Doca: 4", "4"),
+    ("DOCA 12", "12"),
+    ("4", "4"),
+    (None, None),
+    ("doca", "doca"),  # só o prefixo, sem número: não há o que tirar
+])
+def test_normalizar_doca_tira_o_prefixo(valor, esperado):
+    assert ct.normalizar_doca(valor) == esperado
+
+
+def test_extrair_doca_previsao_da_transcricao():
+    doca, previsao, nao_recebe = ct.extrair_doca_previsao("A doca 4 libera em 40 minutos")
+    assert doca == "4" and previsao == "em 40 minutos" and nao_recebe is False
+
+
+def test_extrair_doca_previsao_sem_nada_na_fala():
+    assert ct.extrair_doca_previsao("oi, um minuto") == (None, None, False)
+
+
+def test_resposta_livre_ocorrencia_aceita_resposta_da_pergunta_pendente():
+    achados = ct.resposta_livre_ocorrencia("fila", ["quantos", "previsao"], "Uns cinco caminhões na frente")
+    assert achados == {"quantos": "Uns cinco caminhões na frente"}
+
+
+def test_resposta_livre_ocorrencia_ignora_pergunta_do_motorista():
+    # "quanto tempo" é uma pergunta do motorista, não uma resposta à pergunta da ocorrência.
+    assert ct.resposta_livre_ocorrencia("atraso", ["quanto", "motivo"], "Quanto tempo eu tô parado?") == {}
+
+
+def test_resposta_livre_ocorrencia_ignora_outro_problema():
+    # mudou de assunto: isso é um pneu furado, não a previsão da fila aberta.
+    assert ct.resposta_livre_ocorrencia("fila", ["quantos", "previsao"], "Agora furou um pneu") == {}
+
+
+def test_resposta_livre_ocorrencia_sem_ocorrencia_aberta():
+    assert ct.resposta_livre_ocorrencia(None, None, "Uns cinco caminhões") == {}

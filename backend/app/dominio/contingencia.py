@@ -329,7 +329,11 @@ def _recorte(fala: str, t: str, padrao: str) -> Optional[str]:  # noqa: F811
     return fala[m.start():m.end()].strip() if m else None
 
 
-def _recebedor(fala: str, t: str) -> Decisao:
+def extrair_doca_previsao(fala: str) -> tuple[Optional[str], Optional[str], bool]:
+    """Doca, previsão e "não recebe hoje" por regex simples, direto da fala do recebedor. Usada aqui
+    (sem LLM) e na borda da ferramenta registrar_resposta_recebedor (ver ferramentas.py), quando o
+    LLM de verdade chama a ferramenta sem preencher esses campos apesar de tê-los dito em voz."""
+    t = normalizar(fala or "")
     doca = None
     m = re.search(r"doca\s+(\d+|" + "|".join(NUMEROS) + r")\b", t)
     if m:
@@ -339,6 +343,38 @@ def _recebedor(fala: str, t: str) -> Decisao:
     nao_recebe = _tem(t, r"nao (recebe|recebemos|vamos receber)", r"so amanha", r"\bamanha\b")
     if nao_recebe:
         previsao = "só amanhã (não recebe hoje)" if "amanha" in t else "não recebe hoje"
+    return doca, previsao, nao_recebe
+
+
+def normalizar_doca(valor: Optional[str]) -> Optional[str]:
+    """Só o identificador da doca: 'doca 4' ou 'Doca: 4' -> '4'. O LLM às vezes devolve o campo
+    com o prefixo, mesmo o schema da ferramenta pedindo só o valor."""
+    if valor is None:
+        return None
+    v = str(valor).strip()
+    m = re.match(r"(?i)^doca\b[:\-]?\s*(.*)$", v)
+    if m and m.group(1).strip():
+        return m.group(1).strip()
+    return v
+
+
+def resposta_livre_ocorrencia(tipo: Optional[str], faltantes: Optional[list], fala: str) -> dict:
+    """A fala só vale como detalhe da ocorrência aberta se não for uma pergunta do motorista nem
+    mencionar outro tipo de ocorrência (mudou de assunto) — mesma regra da contingência (_motorista),
+    usada também na borda da conversa (ver conversa.py) quando o LLM de verdade responde em texto e
+    não chama detalhar_ocorrencia depois de uma pergunta de aprofundamento."""
+    if not tipo or not faltantes:
+        return {}
+    t = normalizar(fala or "")
+    if _tem(t, *PERGUNTA) or any(_tem(t, *p) for tp, p, _ in OCORRENCIAS if tp != tipo):
+        return {}
+    from . import ocorrencias as roteiro
+
+    return roteiro.extrair_varios(faltantes, fala)
+
+
+def _recebedor(fala: str) -> Decisao:
+    doca, previsao, nao_recebe = extrair_doca_previsao(fala)
     if doca or previsao:
         partes = [f"doca {doca}" if doca else None, previsao]
         args = {"doca": doca, "previsao": previsao, "resumo": fala}
@@ -350,5 +386,6 @@ def _recebedor(fala: str, t: str) -> Decisao:
 
 
 def decidir(papel: str, fala: str, estado: Estado) -> Decisao:
-    t = normalizar(fala or "")
-    return _recebedor(fala, t) if papel == "recebedor" else _motorista(fala, t, estado)
+    if papel == "recebedor":
+        return _recebedor(fala)
+    return _motorista(fala, normalizar(fala or ""), estado)
