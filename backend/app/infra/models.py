@@ -16,6 +16,9 @@ class Empresa(SQLModel, table=True):
     nome: str
     cnpj: str = ""  # só dígitos; usado no OCOREN (541/341) e em outros EDI por CNPJ
     razao_social: str = ""
+    # Último nº de sequência usado no nome/intercâmbio do OCOREN (servicos/edi.py). Persistido (em vez de em
+    # memória) pra sobreviver a reinício e a mais de uma instância da api sem colidir no nome do arquivo.
+    ultima_sequencia_ocoren: int = 0
 
 
 class RegraEscalonamento(SQLModel, table=True):

@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request
@@ -10,6 +11,8 @@ from ..integracoes.livekit import LiveKitErro
 from ..integracoes.nominatim import GeocodificacaoErro
 from ..servicos.consultas import ConflitoEstado, NaoEncontrado
 from ..servicos.usuarios import ConflitoUsuario
+
+log = logging.getLogger("rodar.api")
 
 
 def c() -> ct.Container:
@@ -29,7 +32,11 @@ def erro_http(e: Exception) -> HTTPException:
         return HTTPException(400, str(e))
     if isinstance(e, RuntimeError):
         return HTTPException(503, str(e))
-    return HTTPException(500, str(e))
+    # Erro não mapeado: loga a exceção inteira pro CloudWatch/log do container, mas devolve uma mensagem
+    # genérica. O texto de `e` pode conter detalhe interno (caminho, query, segredo) que não é pra vazar
+    # pro cliente.
+    log.exception("erro não tratado em uma rota")
+    return HTTPException(500, "erro interno")
 
 
 def _token_da_requisicao(request: Request) -> str:

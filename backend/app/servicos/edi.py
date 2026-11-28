@@ -48,12 +48,18 @@ def atualizar_parceiro(parceiro_id: int, dados: dict) -> ParceiroEdi:
         return parceiro
 
 
-_SEQUENCIA: dict[int, int] = {}  # empresa_id -> último nº usado neste processo (só evita colisão de nome)
-
-
-def _proxima_sequencia(empresa_id: int) -> int:
-    _SEQUENCIA[empresa_id] = _SEQUENCIA.get(empresa_id, 0) + 1
-    return _SEQUENCIA[empresa_id]
+def _proxima_sequencia(s, empresa_id: int) -> int:
+    """Nº de sequência persistido em `Empresa.ultima_sequencia_ocoren`, incrementado com lock de linha
+    (`SELECT ... FOR UPDATE`). Em memória (como era antes) perdia o valor a cada reinício e colidia entre
+    instâncias; persistido, o nome/intercâmbio do arquivo não se repete nem com a api escalada."""
+    empresa = s.exec(select(Empresa).where(Empresa.id == empresa_id).with_for_update()).first()
+    if empresa is None:
+        raise consultas.NaoEncontrado(f"empresa {empresa_id} não existe")
+    empresa.ultima_sequencia_ocoren += 1
+    s.add(empresa)
+    s.commit()
+    s.refresh(empresa)
+    return empresa.ultima_sequencia_ocoren
 
 
 def _somente_digitos(texto: str) -> str:
@@ -70,13 +76,14 @@ def gerar_ocoren(c, rota_id: int, parceiro_id: int) -> tuple[str, bytes]:
         if not parceiro:
             raise consultas.NaoEncontrado(f"parceiro de EDI {parceiro_id} não existe")
         transportadora = s.get(Empresa, rota.empresa_id)
-    if not rota.nfe_chave:
-        raise consultas.ConflitoEstado(f"rota {rota_id} não tem chave de NF-e cadastrada (Rota.nfe_chave)")
-    if not transportadora or not _somente_digitos(transportadora.cnpj):
-        raise consultas.ConflitoEstado(f"transportadora da rota {rota_id} não tem CNPJ cadastrado (Empresa.cnpj)")
+        if not rota.nfe_chave:
+            raise consultas.ConflitoEstado(f"rota {rota_id} não tem chave de NF-e cadastrada (Rota.nfe_chave)")
+        if not transportadora or not _somente_digitos(transportadora.cnpj):
+            raise consultas.ConflitoEstado(f"transportadora da rota {rota_id} não tem CNPJ cadastrado (Empresa.cnpj)")
+        seq = _proxima_sequencia(s, transportadora.id)
     ocorrencias = fonte.ocorrencias_da_rota(rota_id)
     agora = c.relogio.agora()
-    conteudo = ocoren.gerar(parceiro, transportadora, rota, ocorrencias, agora, _proxima_sequencia(transportadora.id))
+    conteudo = ocoren.gerar(parceiro, transportadora, rota, ocorrencias, agora, seq)
     nome = f"OCOREN_{_somente_digitos(transportadora.cnpj)}_{agora:%d%m%H%M}.txt"
     return nome, conteudo
 
