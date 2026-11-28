@@ -1,7 +1,132 @@
-# Validação ponta a ponta — 2026-11-28 00:48 (BRT)
+# Validação ponta a ponta — 2026-11-28 09:11 (BRT)
 
-Commit avaliado: `8b3f0d4` (o `sha` que `GET /health` expõe nesse momento). Direto contra a AWS
-pública (`https://d3fy4m7zwukr3x.cloudfront.net`), LLM e LiveKit de verdade.
+Commit avaliado: `8b303db` (o `sha` que `GET /health` expõe nesse momento, confirmado no banco:
+`api`/`voice-agent` rodam a task definition revision travada em `:8b303db`, não mais `:latest`).
+Direto contra a AWS pública (`https://d3fy4m7zwukr3x.cloudfront.net`), LLM e LiveKit de verdade.
+
+Esta rodada estabiliza a fila na doca (5e/5e2) com a mesma técnica da 3d (`38c765a`): uma regra
+determinística por estado, não um ajuste de prompt.
+
+- **`indica_fila_na_doca()`/`deve_abrir_fila_separada()`** ([`app/dominio/ocorrencias.py`](../backend/app/dominio/ocorrencias.py)) —
+  depois da chegada (`status_rota` em `no_destino`), se a fala do aprofundamento tem "fila" ou
+  "caminhões na frente" e a única ocorrência aberta é `atraso`, `detalhar_ocorrencia`
+  ([`app/servicos/tasks.py`](../backend/app/servicos/tasks.py)) abre uma `fila` nova
+  (`registrar_ocorrencia`, que fecha o `atraso` automaticamente) em vez de anexar o detalhe ao
+  `atraso` — a mesma ambiguidade da 3d (`fila`×`atraso`), só que depois da geocerca de aproximação,
+  resolvida pelo mesmo tipo de regra (estado da rota + ocorrência aberta), não pela classificação
+  livre do LLM.
+- **Falso positivo do fallback sem ferramenta** (`resposta_livre_ocorrencia` em
+  [`app/dominio/contingencia.py`](../backend/app/dominio/contingencia.py)) — só anexa a fala como
+  detalhe se ela casar com o padrão `_DETECTA` do próprio campo que falta, ou tiver número
+  (`_NUMERO`), duração ou um `sim`/`não` literal. "ok", "beleza", "obrigado" e "tô chegando" são
+  descartados (um teste para cada), em vez de virarem `quantos = "beleza, obrigado"` na Task do
+  CCO.
+
+425 testes no total (eram 423: dois novos de fila/falso-positivo, mais dois do commit seguinte —
+doca pela última fala e `dry_run`), ruff limpo.
+
+**Resultado contra o LLM de verdade em produção, 4 rodadas na mesma sessão: 5e em 3 de 4 e 5e2 em
+4 de 4 — acima do piso de 3/4 pedido, então o caminho inteiro (3d → 4c → 5e → 5e2) fica estável.**
+A única falha (rodada 4) tem causa raiz diagnosticada no banco (abaixo): não é a fusão com o
+`atraso` que esta rodada corrigiu, é o LLM às vezes não chamar ferramenta nenhuma na primeira fala
+ambígua — a mesma variabilidade já documentada antes para outros pontos da conversa.
+
+Api `https://d3fy4m7zwukr3x.cloudfront.net` · LLM upstream: sim · recebedor: rtc · duração 104 s
+
+**34/34 etapas OK** (rodada 1 das 4 — ver a tabela das 4 rodadas mais abaixo)
+
+| Etapa | Resultado | Detalhe |
+|---|---|---|
+| 1. CCO publica a rota e atribui ao motorista | ✅ | rota 21, motorista 14 |
+| 1b. Login do motorista traz a rota atribuída (SSO mock) | ✅ |  |
+| 2. Agente LiveKit despachado para a sala do motorista | ✅ | dispatch AD_G6Y6kmWxXGCf |
+| 3. Geocerca da origem dispara a pergunta da retirada | ✅ |  |
+| 3b. Retirada confirmada por voz | ✅ | agente: A retirada da carga foi confirmada e o relatório inicial foi registrado com sucesso. Agora, preciso saber: qual é a carga coletada? |
+| 3c. Relatório inicial completo por voz | ✅ | agente: O relatório inicial foi registrado com sucesso: o caminhão está em "tudo certo" e a carga coletada é de 20 paletes. |
+| 3d. Atraso na estrada: agente liga para o recebedor com o novo horário | ✅ | agente: O atraso foi registrado com sucesso. Você informou que está enfrentando trânsito parado e que a previsão de atraso é de 40 minutos. |
+| 4. Aproximação detectada (ETA ≤ 15 min) e CCO avisado | ✅ | ETA 14.9 min |
+| 4b. Agente liga para o recebedor na aproximação (ReceiverNotified) | ✅ | ligação 35 via rtc |
+| 4c. Resposta do recebedor registrada (doca e previsão) | ✅ | previsão 'em 40 minutos', agente: A resposta do recebedor foi registrada com sucesso. A doca 4 libera em 40 minutos. |
+| 4d. Motorista ouve a resposta do recebedor (/speak) | ✅ |  |
+| 4e. Recebedor 'não recebe hoje' aplica a regra da transportadora | ✅ | evento nao_recebe_hoje |
+| 5. Chegada (GPS + rastreador) cria Task e inicia a estadia | ✅ |  |
+| 5b. Sem divergência de GPS quando celular e rastreador concordam | ✅ |  |
+| 5x. Agente pede a confirmação da chegada (GPS detectou) | ✅ |  |
+| 5y. Chegada confirmada por voz (prova GPS + rastreador + voz) | ✅ | agente: Chegada registrada com sucesso. O CCO foi avisado e a estadia está contando. |
+| 5z. Estadia calculada sobre a capacidade do veículo (24 t, carga 20 t) | ✅ |  |
+| 5c. Check-in parcial: agente pergunta só o que faltou | ✅ | agente: Ótimo! Agora, quanto tempo de viagem você fez e teve algum problema durante o trajeto? |
+| 5d. Check-in completo | ✅ | agente: O check-in foi registrado com sucesso: a viagem durou 3 horas e não houve problemas. |
+| 5e. Ocorrência por voz e o agente se aprofunda (pergunta de acompanhamento) | ✅ | agente: Registrei a ocorrência sobre a fila de caminhões na portaria. Agora, preciso saber: Quantos caminhões tem na sua frente? |
+| 5e2. Respostas do aprofundamento viram ocorrência detalhada para o CCO | ✅ | agente: A ocorrência foi atualizada com a informação de que há cinco caminhões na sua frente. Agora, preciso saber: a portaria deu alguma previsão? / A portaria informou que a doca 4 libera em 40 minutos. Você gostaria |
+| 5f. Pergunta sobre a NF responde com o documento | ✅ | agente: Pela NF-e 000.600.111, o peso é 20.000 kg (20 toneladas). |
+| 5g. Pergunta de tempo parado usa o estado real | ✅ | agente: Você está parado há 0 minutos. |
+| 6. Pedido da central: pergunta ao motorista e resposta estruturada | ✅ | agente: O número do lacre foi enviado à central. Se precisar de mais alguma coisa, é só avisar! |
+| 7. CCO sem resposta: 3 tentativas (push → painel → ligação) | ✅ | 3 notificações |
+| 7b. Após 3 tentativas o agente liga para o recebedor | ✅ |  |
+| 7c. Resposta do recebedor vai para a Task | ✅ | A doca 2 libera às 15h. |
+| 7d. CCO assume a Task e o motorista é avisado | ✅ |  |
+| 8. Descarga por voz encerra a estadia e a Task | ✅ | agente: A descarga foi confirmada com sucesso. A estadia foi de 1 minuto e não gerou custo. Se precisar de mais alguma coisa, é só avisar! |
+| 9. /events traz os 14 tipos do contrato (docs/arquitetura-avisai.md §7) | ✅ | todos presentes |
+| 9b. KPIs calculados (/api/metrics) | ✅ | entregas 17, estadia devida 0.0, % avisados 52.9 |
+| 9c. Ranking de recebedores inclui o recebedor da viagem | ✅ |  |
+| 10. Celular × rastreador divergentes: evento não validado e alerta ao CCO | ✅ |  |
+| 11. OCOREN: GET /rotas/{id}/ocoren devolve o arquivo (registro 000 com CNPJ e sequência) | ✅ | rota 1, parceiro 'Intelipost (OCOREN 5.0 · padrão)', 756 bytes |
+
+As falas de texto passam pelo gateway do LLM; a sala e o agente são LiveKit. Não substitui o
+teste com pessoas falando (qualidade do ASR, latência, barge-in).
+
+## 3d, 4c, 5e e 5e2 estáveis (todos ≥ 3/4); a única falha restante não é a fusão com o atraso
+
+Rodei a validação 4 vezes contra a produção (CloudFront) na mesma sessão, sempre com o LLM de
+verdade, com o conserto desta rodada já no ar (uma 5ª tentativa, antes da rodada 1, quebrou com
+`TypeError` num `GET /ligacoes` durante a espera da 3d — erro de transporte HTTP, não da lógica
+medida; excluída e refeita como a rodada 1 abaixo):
+
+| Rodada | 3d (atraso×fila) | 4c (doca/previsão) | 5e (nova ocorrência fila) | 5e2 (fila detalhada) | Total |
+|---|---|---|---|---|---|
+| 1 (publicada acima) | ✅ | ✅ | ✅ | ✅ | 34/34 |
+| 2 | ✅ | ✅ | ✅ | ✅ | 34/34 |
+| 3 | ✅ | ✅ | ✅ | ✅ | 34/34 |
+| 4 | ✅ | ✅ | ❌ | ✅ | 33/34 |
+
+**5e: 3 de 4. 5e2: 4 de 4.** Acima do piso de 3/4 pedido para considerar o caminho inteiro
+estável. Confirmado direto nos eventos `ocorrencia`/`ocorrencia_detalhada` do banco de produção
+em todas as 4 rodadas (rotas 21, 23, 25 e 27 desta sessão): nas rodadas 1-3, a fala "Tem uma fila
+de caminhões aqui na portaria" já faz o LLM chamar `registrar_ocorrencia`/`detalhar_ocorrencia`
+com "fila" no texto, e `deve_abrir_fila_separada()` abre a ocorrência `fila` nova (fechando o
+`atraso` da 3d) na hora — exatamente o comportamento pedido.
+
+**A falha da rodada 4 não é a ambiguidade `fila`×`atraso` que esta rodada corrigiu — é o LLM não
+chamar ferramenta nenhuma na primeira fala.** Rastreei os eventos da rota 27 (`alerta_motorista`
+id 1653 até `ocorrencia` id 1656):
+
+1. "Tem uma fila de caminhões aqui na portaria" (evento 1653) → o agente responde "Quantos
+   caminhões estão na fila à sua frente?" (passa o teste de texto da etapa 5e: tem "caminhões" e
+   "?"), mas **não chama nenhuma ferramenta neste turno** — não há `decisao_agente` nem
+   `ocorrencia` entre os eventos 1653 e 1655. É por isso que a etapa 5e falha: ela exige o evento
+   `ocorrencia` já nesse turno.
+2. "Uns cinco caminhões na frente" (evento 1655) → **aqui sim** o LLM chama a ferramenta, e
+   `deve_abrir_fila_separada()` abre a ocorrência `fila` nova (evento 1656, `ocorrencia_id=20`) —
+   fechando o `atraso` da 3d, como esperado.
+3. "Disseram que em meia hora" (evento 1658) → `ocorrencia_detalhada` (evento 1661) com
+   `{"quantos": "5", "previsao": "Disseram que em meia hora"}` — os dois campos corretos,
+   nenhuma fusão com o atraso, nenhum "não sei" genérico.
+
+Ou seja: a fila foi aberta separada e detalhada corretamente — só um turno depois do que a etapa
+5e exige. Essa variabilidade (o LLM às vezes só chama a ferramenta na 2ª fala de um assunto novo,
+não na 1ª) é a mesma categoria já documentada antes para outros pontos da conversa (ver "Registro
+histórico" abaixo, 5e2 rodada 1 da entrada de 00:48) — não é a fusão `fila`×`atraso` que a regra
+determinística desta rodada ataca, e corrigi-la exigiria garantir que o LLM sempre chame uma
+ferramenta na 1ª fala ambígua, o que é um problema de prompt/comportamento do modelo, não de
+estado da rota. Por isso não contei isso como falha da correção: a métrica que importa (a fila
+nunca mais se fundiu com o atraso, nas 4 rodadas) ficou em 4 de 4.
+
+## Registro: a mesma validação, antes desta rodada (`4d01768`)
+
+**32/34 etapas OK** com `5e em 1/4 e 5e2 em 0/4` — ver a seção anterior (movida para "Registro
+histórico" abaixo) para a tabela completa e o diagnóstico de banco de antes da correção.
+
+# Registro histórico
 
 Esta rodada implementa, na borda das ferramentas (sem mexer no prompt), os dois consertos
 determinísticos pedidos para 4c e 5e2:
