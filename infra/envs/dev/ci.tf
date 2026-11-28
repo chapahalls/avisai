@@ -32,9 +32,24 @@ data "aws_iam_policy_document" "ci_deploy" {
   }
 
   statement {
-    sid       = "EcsForceNewDeployment"
+    # Nome histórico (era force-new-deployment contra :latest); hoje a mesma ecs:UpdateService troca
+    # o serviço pra revision nova que o passo abaixo registra (ver EcsRegistrarRevisaoNova) — a ação
+    # IAM não muda com o parâmetro passado, só o efeito.
+    sid       = "EcsAtualizaServicoPraRevisaoNova"
     actions   = ["ecs:UpdateService", "ecs:DescribeServices"]
     resources = [aws_ecs_service.api.id, aws_ecs_service.voice_agent.id]
+  }
+
+  statement {
+    # Pra trocar o serviço pra imagem tag :sha (imutável) em vez de force-new-deployment contra
+    # :latest (mutável, reaproveita a mesma revision — não dá pra provar qual sha realmente subiu),
+    # a CI lê a task definition atual (describe), troca só o `image` do container e registra uma
+    # revision nova (register) a cada deploy. Nenhuma das duas ações aceita resource-level
+    # permission na AWS (só "*" — não dá pra restringir pela família da task); quem compensa isso é
+    # o PassRole abaixo, que segue restrito às 2 roles que as tasks já usam.
+    sid       = "EcsRegistrarRevisaoNova"
+    actions   = ["ecs:DescribeTaskDefinition", "ecs:RegisterTaskDefinition"]
+    resources = ["*"]
   }
 
   statement {

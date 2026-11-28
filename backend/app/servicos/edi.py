@@ -48,13 +48,19 @@ def atualizar_parceiro(parceiro_id: int, dados: dict) -> ParceiroEdi:
         return parceiro
 
 
-def _proxima_sequencia(s, empresa_id: int) -> int:
+def _proxima_sequencia(s, empresa_id: int, dry_run: bool = False) -> int:
     """Nº de sequência persistido em `Empresa.ultima_sequencia_ocoren`, incrementado com lock de linha
     (`SELECT ... FOR UPDATE`). Em memória (como era antes) perdia o valor a cada reinício e colidia entre
-    instâncias; persistido, o nome/intercâmbio do arquivo não se repete nem com a api escalada."""
+    instâncias; persistido, o nome/intercâmbio do arquivo não se repete nem com a api escalada.
+
+    `dry_run=True` (smoke de deploy, ver api/edi.py) devolve a próxima sequência sem consumi-la:
+    não grava nada, então gerar o arquivo pra conferir que a rota HTTP responde não custa um número
+    de sequência de verdade a cada deploy."""
     empresa = s.exec(select(Empresa).where(Empresa.id == empresa_id).with_for_update()).first()
     if empresa is None:
         raise consultas.NaoEncontrado(f"empresa {empresa_id} não existe")
+    if dry_run:
+        return empresa.ultima_sequencia_ocoren + 1
     empresa.ultima_sequencia_ocoren += 1
     s.add(empresa)
     s.commit()
@@ -66,8 +72,9 @@ def _somente_digitos(texto: str) -> str:
     return "".join(caractere for caractere in (texto or "") if caractere.isdigit())
 
 
-def gerar_ocoren(c, rota_id: int, parceiro_id: int) -> tuple[str, bytes]:
-    """Devolve (nome_do_arquivo, conteúdo). `consultas.ConflitoEstado` (409) sem NF-e ou CNPJ cadastrados."""
+def gerar_ocoren(c, rota_id: int, parceiro_id: int, dry_run: bool = False) -> tuple[str, bytes]:
+    """Devolve (nome_do_arquivo, conteúdo). `consultas.ConflitoEstado` (409) sem NF-e ou CNPJ cadastrados.
+    `dry_run=True` não consome o número de sequência (ver `_proxima_sequencia`)."""
     with sessao() as s:
         rota = s.get(Rota, rota_id)
         if not rota:
@@ -80,7 +87,7 @@ def gerar_ocoren(c, rota_id: int, parceiro_id: int) -> tuple[str, bytes]:
             raise consultas.ConflitoEstado(f"rota {rota_id} não tem chave de NF-e cadastrada (Rota.nfe_chave)")
         if not transportadora or not _somente_digitos(transportadora.cnpj):
             raise consultas.ConflitoEstado(f"transportadora da rota {rota_id} não tem CNPJ cadastrado (Empresa.cnpj)")
-        seq = _proxima_sequencia(s, transportadora.id)
+        seq = _proxima_sequencia(s, transportadora.id, dry_run=dry_run)
     ocorrencias = fonte.ocorrencias_da_rota(rota_id)
     agora = c.relogio.agora()
     conteudo = ocoren.gerar(parceiro, transportadora, rota, ocorrencias, agora, seq)

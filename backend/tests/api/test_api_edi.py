@@ -64,10 +64,27 @@ async def test_troca_de_parceiro_gera_ocoren_3_1_com_texto_livre(client, relogio
     assert valores["texto_livre"] and "ESPERA" in valores["texto_livre"]
 
 
+async def test_dry_run_gera_o_arquivo_sem_consumir_a_sequencia(client, relogio):
+    """`dry_run=true` (smoke do deploy, ver .github/workflows/ci.yml) confirma que a rota responde
+    sem gastar um número de sequência de produção a cada deploy."""
+    p50 = await _parceiro_id(client, "ocoren-5.0")
+    await _descarregar_com_espera(client, relogio)
+
+    r = await client.get("/rotas/1/ocoren", params={"parceiro": p50, "dry_run": "true"})
+    assert r.status_code == 200, r.text
+    with sessao() as s:
+        assert s.get(Empresa, 1).ultima_sequencia_ocoren == 0  # não avançou
+
+    r2 = await client.get("/rotas/1/ocoren", params={"parceiro": p50})
+    assert r2.status_code == 200, r2.text
+    with sessao() as s:
+        assert s.get(Empresa, 1).ultima_sequencia_ocoren == 1  # só a chamada de verdade avança
+
+
 async def test_duas_geracoes_seguidas_avancam_e_persistem_a_sequencia_1_e_2(client, relogio):
-    """Regressão (alerta do júri): a sequência do OCOREN (nome do intercâmbio no 000, `seq` de
-    `servicos/edi._proxima_sequencia`) precisa ficar persistida em `Empresa.ultima_sequencia_ocoren`,
-    avançando a cada arquivo gerado — não resetar nem repetir entre chamadas."""
+    """A sequência do OCOREN (nome do intercâmbio no 000, `seq` de `servicos/edi._proxima_sequencia`)
+    precisa ficar persistida em `Empresa.ultima_sequencia_ocoren`, avançando a cada arquivo gerado —
+    não resetar nem repetir entre chamadas, nem com a api escalada em mais de uma instância."""
     p50 = await _parceiro_id(client, "ocoren-5.0")
     await _descarregar_com_espera(client, relogio)
 

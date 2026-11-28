@@ -94,17 +94,39 @@ jobs:
           echo "exitCode=$EXIT_CODE"
           test "$EXIT_CODE" = "0"
 
-      - name: Atualiza api e voice-agent pra imagem nova (force-new-deployment)
+      # force-new-deployment reaproveitava a mesma task definition e repuxava a tag :latest — mutável
+      # por desenho (ver infra/README.md), então não tinha como provar qual sha de fato subiu. Em vez
+      # disso, registra uma revision nova com a imagem travada em :<sha do commit> (lê a task definition
+      # em uso no serviço, troca só o `image` do container, registra) e aponta o serviço pra ela — cada
+      # deploy fica uma revision imutável e auditável. O `tofu apply` ignora esse campo de propósito
+      # (lifecycle.ignore_changes em infra/envs/dev/ecs.tf), senão devolveria o serviço pra revision
+      # antiga no próximo apply.
+      - name: Atualiza api e voice-agent pra uma revision nova (imagem travada por :sha)
         run: |
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE_API" --force-new-deployment > /dev/null
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE_VOICE_AGENT" --force-new-deployment > /dev/null
+          SHA="${GITHUB_SHA::7}"
+          for par in "$ECS_SERVICE_API" "$ECS_SERVICE_VOICE_AGENT"; do
+            TD_ATUAL="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$par" \
+              --query 'services[0].taskDefinition' --output text)"
+            NOVA_ARN="$(aws ecs describe-task-definition --task-definition "$TD_ATUAL" --query 'taskDefinition' \
+              | jq --arg img "$ECR_REPOSITORY:$SHA" '
+                  .containerDefinitions[0].image = $img
+                  | {family, taskRoleArn, executionRoleArn, networkMode, containerDefinitions,
+                     volumes, placementConstraints, requiresCompatibilities, cpu, memory}
+                ' \
+              | aws ecs register-task-definition --cli-input-json file:///dev/stdin \
+                  --query 'taskDefinition.taskDefinitionArn' --output text)"
+            echo "$par -> $NOVA_ARN"
+            aws ecs update-service --cluster "$ECS_CLUSTER" --service "$par" --task-definition "$NOVA_ARN" > /dev/null
+          done
           aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE_API" "$ECS_SERVICE_VOICE_AGENT"
 
       # /health agora devolve 503 (não 200) quando "ok" é falso (ver app/main.py), então o -f do curl já
-      # falha o job com banco fora do ar. Além disso confere o `sha` (a tag :latest é mutável; sem isso
-      # dava para "passar" o smoke e o júri ver a imagem anterior) e faz um GET autenticado do OCOREN,
-      # que só funciona se a migração `ultima_sequencia_ocoren` (Empresa, ver alembic/versions) rodou.
-      - name: Confere /health (sha) e um GET do OCOREN depois do deploy
+      # falha o job com banco fora do ar. Além disso confere o `sha` (sem isso dava para "passar" o
+      # smoke com a imagem de um deploy anterior) e faz um GET do OCOREN com `dry_run=true`, que só
+      # responde 200 se a migração `ultima_sequencia_ocoren` (Empresa, ver alembic/versions) rodou —
+      # sem `dry_run` isso consumiria um número de sequência de verdade a cada deploy (efeito colateral
+      # em dado de produção só pra validar que a rota responde; ver app/servicos/edi._proxima_sequencia).
+      - name: Confere /health (sha) e um GET do OCOREN (dry_run) depois do deploy
         if: env.API_PUBLIC_URL != ''
         run: |
           SHA="${GITHUB_SHA::7}"
@@ -121,5 +143,5 @@ jobs:
           ROTA_ID="$(curl -fsS -H "Authorization: Bearer $TOKEN" "$API_PUBLIC_URL/rotas" | jq -r '.[0].id')"
           PARCEIRO_ID="$(curl -fsS -H "Authorization: Bearer $TOKEN" "$API_PUBLIC_URL/edi/parceiros" | jq -r '.[0].id')"
           curl -fsS -H "Authorization: Bearer $TOKEN" \
-            "$API_PUBLIC_URL/rotas/$ROTA_ID/ocoren?parceiro=$PARCEIRO_ID" -o /dev/null
-          echo "sha confirmado ($SHA) e GET /rotas/$ROTA_ID/ocoren?parceiro=$PARCEIRO_ID respondeu 200"
+            "$API_PUBLIC_URL/rotas/$ROTA_ID/ocoren?parceiro=$PARCEIRO_ID&dry_run=true" -o /dev/null
+          echo "sha confirmado ($SHA) e GET /rotas/$ROTA_ID/ocoren?parceiro=$PARCEIRO_ID&dry_run=true respondeu 200"

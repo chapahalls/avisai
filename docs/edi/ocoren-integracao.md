@@ -1,6 +1,6 @@
 # OCOREN: estrutura para implementação no rodar-backend
 
-Pesquisa de 27/11/2026, revisada com o manual OCOREN 5.0 da Intelipost (PDF enviado pelo time). Responde ao item "conector OCOREN" do judge (H3 7→8) e à promessa do [ADR-0001](adr/0001-integracao-setup-e-tres-dores.md) e do `PLAN.md` ("TMS via EDI OCOREN (Proceda): ocorrências de chegada, espera e descarga").
+Pesquisa de 27/11/2026, revisada com o manual OCOREN 5.0 da Intelipost (PDF enviado pelo time). Implementa o conector OCOREN prometido pelo [ADR-0001](adr/0001-integracao-setup-e-tres-dores.md) e pelo `PLAN.md` ("TMS via EDI OCOREN (Proceda): ocorrências de chegada, espera e descarga").
 
 ## 1. Mercado: o quanto a 5.0 é sólida e quantas versões existem
 

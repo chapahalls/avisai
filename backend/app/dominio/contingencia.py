@@ -335,9 +335,11 @@ def extrair_doca_previsao(fala: str) -> tuple[Optional[str], Optional[str], bool
     LLM de verdade chama a ferramenta sem preencher esses campos apesar de tê-los dito em voz."""
     t = normalizar(fala or "")
     doca = None
-    m = re.search(r"doca\s+(\d+|" + "|".join(NUMEROS) + r")\b", t)
-    if m:
-        doca = NUMEROS.get(m.group(1), m.group(1))
+    # findall + [-1] (não search, que pega a 1ª): o recebedor às vezes se corrige na mesma fala
+    # ("a doca 2... não, foi realocado, é a doca 4") — a doca que vale é a última dita, não a 1ª.
+    docas = re.findall(r"doca\s+(\d+|" + "|".join(NUMEROS) + r")\b", t)
+    if docas:
+        doca = NUMEROS.get(docas[-1], docas[-1])
     previsao = (_recorte(fala, t, r"\b(em|daqui)\s+(a\s+)?(uns?\s+|umas?\s+)?(\d+|uma|um|meia|duas|dois)\s+(minutos?|horas?|hora)\b")
                 or _recorte(fala, t, r"\b(as|a partir das)\s+\d{1,2}(\s*h(oras?)?|:\d{2})(\d{2})?"))
     nao_recebe = _tem(t, r"nao (recebe|recebemos|vamos receber)", r"so amanha", r"\bamanha\b")

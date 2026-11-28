@@ -31,8 +31,8 @@ async def test_cco_publica_rota_sem_motorista(client):
 
 
 async def test_listagem_de_rotas_e_sempre_ordenada_por_id(client):
-    """Sem order_by, a ordem do Postgres não é garantida (alerta do júri, score.md): o smoke do
-    deploy (ci.yml) e scripts/validar_fluxos.py dependem de `GET /rotas`[0] ser sempre a mesma rota."""
+    """Sem order_by, a ordem do Postgres não é garantida: o smoke do deploy (ci.yml) e
+    scripts/validar_fluxos.py dependem de `GET /rotas`[0] ser sempre a mesma rota."""
     a = (await client.post("/rotas", json=NOVA)).json()
     b = (await client.post("/rotas", json={**NOVA, "nota_fiscal": "000.519.005"})).json()
     ids = [x["id"] for x in (await client.get("/rotas")).json()]

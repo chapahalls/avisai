@@ -37,7 +37,7 @@ def test_resumo_para_o_cco():
 
 
 def test_fila_na_estrada_e_corrigida_para_atraso():
-    """Não existe fila de caminhões num recebedor enquanto o caminhão ainda está na pista (score.md 2026-11-27)."""
+    """Não existe fila de caminhões num recebedor enquanto o caminhão ainda está na pista."""
     assert oc.corrigir_tipo_por_estado("fila", "em_transito") == "atraso"
 
 

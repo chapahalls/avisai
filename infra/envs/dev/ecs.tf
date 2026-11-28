@@ -212,6 +212,15 @@ resource "aws_ecs_service" "api" {
   }
 
   depends_on = [aws_lb_listener.http]
+
+  lifecycle {
+    # A CI registra uma revision nova (tag :sha) a cada deploy e troca o serviço pra ela direto na
+    # AWS (ver "Confere /health..." no ci.yml) — sem passar por aqui, pra não depender de IAM mais
+    # largo (aplicar) nem de rodar a CI com a credencial de infra. Sem isso, o próximo `tofu apply`
+    # veria a revision da CI como "drift" e devolveria o serviço pra revision que o Terraform
+    # conhece (a antiga, com a imagem de quando rodou o último apply).
+    ignore_changes = [task_definition]
+  }
 }
 
 resource "aws_ecs_service" "voice_agent" {
@@ -228,4 +237,8 @@ resource "aws_ecs_service" "voice_agent" {
   }
 
   depends_on = [aws_ecs_service.api]
+
+  lifecycle {
+    ignore_changes = [task_definition] # mesmo motivo do serviço api, acima
+  }
 }

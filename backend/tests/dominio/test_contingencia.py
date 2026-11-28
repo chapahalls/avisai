@@ -259,6 +259,13 @@ def test_extrair_doca_previsao_sem_nada_na_fala():
     assert ct.extrair_doca_previsao("oi, um minuto") == (None, None, False)
 
 
+def test_extrair_doca_previsao_usa_a_ultima_doca_dita_quando_o_recebedor_se_corrige():
+    """O recebedor às vezes se corrige na mesma fala; a doca que vale é a última, não a 1ª
+    (re.findall(...)[-1] em vez de re.search, que pegaria "2")."""
+    doca, _, _ = ct.extrair_doca_previsao("Ih, falei errado, não é a doca 2, é a doca 4 mesmo")
+    assert doca == "4"
+
+
 def test_resposta_livre_ocorrencia_aceita_resposta_da_pergunta_pendente():
     achados = ct.resposta_livre_ocorrencia("fila", ["quantos", "previsao"], "Uns cinco caminhões na frente")
     assert achados == {"quantos": "Uns cinco caminhões na frente"}
@@ -281,7 +288,8 @@ def test_resposta_livre_ocorrencia_sem_ocorrencia_aberta():
 @pytest.mark.parametrize("fala", ["ok", "beleza", "obrigado", "tô chegando"])
 def test_resposta_livre_ocorrencia_descarta_confirmacao_generica(fala):
     """Sem número, hora/duração, sim/não explícito ou o padrão do próprio campo, uma confirmação
-    genérica não responde nada da ocorrência (score.md: "beleza, obrigado" virava quantos=fala)."""
+    genérica não responde nada da ocorrência — sem essa guarda, "beleza, obrigado" virava
+    quantos="beleza, obrigado" (o LLM de verdade confirma o pedido sem responder à pergunta)."""
     assert ct.resposta_livre_ocorrencia("fila", ["quantos", "previsao"], fala) == {}
 
 

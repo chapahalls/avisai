@@ -12,10 +12,16 @@ router = APIRouter(tags=["edi"])
 
 
 @router.get("/rotas/{rota_id}/ocoren", dependencies=[Depends(exigir_cco)])
-def baixar_ocoren(rota_id: int, parceiro: int = Query(..., description="id do ParceiroEdi"), ct=Depends(c)):
+def baixar_ocoren(
+    rota_id: int,
+    parceiro: int = Query(..., description="id do ParceiroEdi"),
+    dry_run: bool = Query(False, description="Gera o arquivo sem consumir o número de sequência "
+                          "(Empresa.ultima_sequencia_ocoren) — usado pelo smoke de deploy, nunca pelo CCO de verdade."),
+    ct=Depends(c),
+):
     """Gera o arquivo OCOREN (5.0 ou 3.1, conforme o perfil) e devolve para download. 409 sem NF-e/CNPJ."""
     try:
-        nome, conteudo = edi.gerar_ocoren(ct, rota_id, parceiro)
+        nome, conteudo = edi.gerar_ocoren(ct, rota_id, parceiro, dry_run=dry_run)
     except Exception as error:  # noqa: BLE001
         raise erro_http(error)
     return Response(conteudo, media_type="text/plain",

@@ -120,8 +120,8 @@ async def test_atraso_na_estrada_liga_para_o_recebedor_com_novo_horario(client, 
 
 async def test_llm_classifica_atraso_como_fila_mas_estado_da_rota_corrige(client, fake_llm, fake_livekit):
     """"Trânsito parado" e "fila de caminhões" são falas parecidas; o LLM de verdade às vezes erra
-    essa classificação (score.md 2026-11-27). Na estrada (em_transito) não existe fila de caminhões
-    num recebedor, então o estado da rota corrige e o aviso ao recebedor acontece do mesmo jeito."""
+    essa classificação. Na estrada (em_transito) não existe fila de caminhões num recebedor, então
+    o estado da rota corrige e o aviso ao recebedor acontece do mesmo jeito."""
     sid = (await client.post("/sessions", json={"rota_id": 1})).json()["id"]
     await client.post("/rotas/1/posicao", json=NO_CAMINHO)
     fake_llm.respostas = [tool_call("registrar_ocorrencia", '{"tipo":"fila","descricao":"trânsito parado, uns 40 min de atraso"}'),
