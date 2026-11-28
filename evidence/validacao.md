@@ -26,8 +26,9 @@ e [`backend/tests/dominio/test_contingencia.py`](../backend/tests/dominio/test_c
 413 testes no total, ruff limpo.
 
 **Resultado contra o LLM de verdade em produção, 4 rodadas na mesma sessão: 4c resolvido (4 de 4);
-5e2 continua falhando, mas agora por um motivo diagnosticado com precisão (abaixo) em vez de "o
-modelo às vezes esquece a ferramenta".**
+a ocorrência de fila na doca continua instável — 5e falhou em 3 de 4 rodadas e 5e2 em 4 de 4 —,
+mas agora por motivos diagnosticados com precisão (abaixo) em vez de "o modelo às vezes esquece
+a ferramenta".**
 
 Api `https://d3fy4m7zwukr3x.cloudfront.net` · LLM upstream: sim · recebedor: rtc · duração 99 s
 
@@ -73,7 +74,7 @@ Api `https://d3fy4m7zwukr3x.cloudfront.net` · LLM upstream: sim · recebedor: r
 As falas de texto passam pelo gateway do LLM; a sala e o agente são LiveKit. Não substitui o
 teste com pessoas falando (qualidade do ASR, latência, barge-in).
 
-## 4c resolvido (4 de 4); 5e2 tem duas causas diferentes, nenhuma delas "esqueceu a ferramenta"
+## 4c resolvido (4 de 4); a ocorrência de fila na doca (5e e 5e2) tem duas causas diferentes, nenhuma delas "esqueceu a ferramenta"
 
 Rodei a validação 4 vezes contra a produção (CloudFront) na mesma sessão, sempre com o LLM de
 verdade, com o conserto desta rodada já no ar:
@@ -89,8 +90,8 @@ verdade, com o conserto desta rodada já no ar:
 ficou com `doca="4"` (nunca `"doca 4"` nem `None`) e `previsao="em 40 minutos"`. A normalização
 e a extração por regex eliminaram as duas falhas documentadas na rodada anterior.
 
-**5e2 continua em 0 de 4, mas por dois motivos diferentes e mais precisos que antes** (confirmado
-direto nos eventos `ocorrencia`/`ocorrencia_detalhada` do banco de produção):
+**5e2 continua em 0 de 4 e 5e em 1 de 4, mas por dois motivos diferentes e mais precisos que
+antes** (confirmado direto nos eventos `ocorrencia`/`ocorrencia_detalhada` do banco de produção):
 
 - **3 das 4 rodadas (2, 3, 4)** — o LLM nunca chama `registrar_ocorrencia` para uma ocorrência
   `fila` separada: ele reaproveita a ocorrência `atraso` já aberta (da etapa 3d) e chama
@@ -101,6 +102,8 @@ direto nos eventos `ocorrencia`/`ocorrencia_detalhada` do banco de produção):
   porque ali as duas coisas são legitimamente possíveis (o caminhão já chegou, então pode ter
   fila de verdade *e* ainda estar "atrasado" na ótica da conversa). Não existe uma 2ª `Ocorrencia`
   para o fallback de 5e2 anexar detalhe a — o problema é anterior ao que foi pedido para corrigir.
+  É também por isso que a 5e falha nessas 3 rodadas: a asserção exige um evento `ocorrencia` do
+  tipo `fila`, que nunca chega a existir.
 - **1 das 4 rodadas (1)** — aqui a ocorrência `fila` foi criada separadamente (5e ✅), e nas duas
   respostas de aprofundamento ("Uns cinco caminhões na frente" / "Disseram que em meia hora") o
   LLM *chamou* alguma ferramenta nos dois turnos (confirmado: não haveria texto de confirmação
