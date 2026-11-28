@@ -55,9 +55,12 @@ class Settings(BaseSettings):
     auth_segredo: str = ""
     auth_token_validade_h: float = 12
     # Origens permitidas no CORS (painel web). "*" libera tudo; use só em desenvolvimento.
+    # https://rodar-web-beta.vercel.app: painel rodar-web em produção. Esse default é o que vale no deploy
+    # temporário da Vercel (rodar-backend-five.vercel.app) — lá não há CORS_ORIGENS no painel, então cai aqui;
+    # ver infra/envs/dev/variables.tf (cors_origins) pro equivalente no deploy persistente da AWS.
     cors_origens: list[str] = [
         "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173", "http://127.0.0.1:4173",
-        "http://localhost:8081", "http://localhost:19006",
+        "http://localhost:8081", "http://localhost:19006", "https://rodar-web-beta.vercel.app",
     ]
     # Ligações disparadas à mão (CCO, atalhos de demo): no máximo N por rota a cada janela. 0 desliga.
     ligacoes_manuais_max: int = 5
